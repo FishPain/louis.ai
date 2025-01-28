@@ -49,13 +49,11 @@ def get_chatgpt_response(query, retrieved_docs):
 
     # Step 1: Decide action using LLM
     action = decide_action(query, chat_model)
-    print(f"Decision: {action}")
 
     if action == Routing.WEB_SEARCH:
         agent_executor = create_react_agent(chat_model, tools)
         # Use tools to perform external search
         response = agent_executor.invoke({"messages": [HumanMessage(content=query)]})
-        print(f"Using Tool Response: {response}")
         return response
 
     elif action == Routing.VECTORSTORE:
