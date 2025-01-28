@@ -1,0 +1,13 @@
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langchain_postgres
+langsmith
+langgraph
+
+llama-index-core
+llama-parse
+llama-index-readers-file
+
+python-dotenv
