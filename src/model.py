@@ -49,7 +49,7 @@ def web_search_node(state):
     """
     query = state["query"]
     model = state["model"]
-    search = TavilySearchResults(max_results=2)
+    search = TavilySearchResults(max_results=1)
     tools = [search]
     query = state["query"]
     agent_executor = create_react_agent(model, tools)
@@ -60,7 +60,7 @@ def web_search_node(state):
 def vectorstore_node(state):
     query = state["query"]
     model = state["model"]
-    retrieved_docs = state["db"].similarity_search(query, k=3)
+    retrieved_docs = state["db"].similarity_search(query, k=2)
     context = "\n".join([doc.page_content for doc in retrieved_docs])
     rag_prompt = f"""
     You are a highly skilled legal expert specializing in Singaporean law, with extensive experience in drafting contracts, \
