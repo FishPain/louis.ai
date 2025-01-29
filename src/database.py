@@ -41,11 +41,10 @@ class VectorDB:
 
 
 class ExtractDocs:
-    def __init__(self, documents):
-        self.documents = documents
+    def __init__(self):
+        self.documents = None
 
-    @staticmethod
-    def extract(file_path):
+    def extract(self, file_path):
         # set up parser
         parser = LlamaParse(
             result_type="markdown"  # "markdown" and "text" are available
@@ -53,7 +52,7 @@ class ExtractDocs:
 
         # use SimpleDirectoryReader to parse our file
         file_extractor = {".pdf": parser}
-        documents = SimpleDirectoryReader(
+        self.documents = SimpleDirectoryReader(
             input_files=[file_path], file_extractor=file_extractor
         ).load_data()
 
@@ -72,3 +71,16 @@ class ExtractDocs:
         with open("data/constitution.pkl", "rb") as file:
             docs = pickle.load(file)
         return docs
+
+
+if __name__ == "__main__":
+    # Load the documents
+    docs = ExtractDocs().load()
+    db = VectorDB()
+    db.create_vector_store()
+    db.add_documents(docs)
+    query = "What is the role of the President of the United States?"
+    results = db.similarity_search(query)
+    for doc in results:
+        print(doc.page_content)
+        print("\n")
