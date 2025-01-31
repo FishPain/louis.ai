@@ -20,6 +20,6 @@ echo "PostgreSQL is ready!"
 
 # Populate VectorDB
 echo "Populating Vector DB..."
-python3 src.database.py
+python3 src/database.py
 
 echo "Vector DB is ready..."

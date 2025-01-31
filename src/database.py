@@ -32,7 +32,7 @@ class VectorDB:
 
     def add_documents(self, documents):
         self.vector_store.add_documents(
-            documents, ids=[doc.metadata["id"] for doc in self.documents]
+            documents, ids=[doc.metadata["id"] for doc in documents]
         )
 
     def similarity_search(self, query, k=3):
@@ -75,12 +75,8 @@ class ExtractDocs:
 
 if __name__ == "__main__":
     # Load the documents
-    docs = ExtractDocs().load()
+    docs = ExtractDocs().extract("data/Constitution_of_the_Republic_of_Singapore.pdf")
+    # Save the documents
     db = VectorDB()
     db.create_vector_store()
     db.add_documents(docs)
-    query = "What is the role of the President of the United States?"
-    results = db.similarity_search(query)
-    for doc in results:
-        print(doc.page_content)
-        print("\n")
