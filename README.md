@@ -30,5 +30,6 @@ echo "run the scripts within main.ipynb"
 
 ### RAG
 
-- Ranking: [RankNet, LambdaRank, LambdaMART]("https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/MSR-TR-2010-82.pdf")
-- Retrieval: [RAPTOR]("https://arxiv.org/html/2401.18059v1"), [Multi-Representation-Indexing]("https://www.linkedin.com/posts/langchain_rag-from-scratch-multi-representation-activity-7179205407217766400-Wm0w/"),
+- Ranking: [RankNet, LambdaRank, LambdaMART](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/MSR-TR-2010-82.pdf)
+- [ColBERT](https://arxiv.org/pdf/2004.12832)
+- Retrieval: [RAPTOR](https://arxiv.org/html/2401.18059v1), [Multi-Representation-Indexing](https://www.linkedin.com/posts/langchain_rag-from-scratch-multi-representation-activity-7179205407217766400-Wm0w/),
