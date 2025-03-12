@@ -1,5 +1,6 @@
 from typing import List, TypedDict, Set
 from langgraph.graph import StateGraph, START, END
+from langchain.schema import HumanMessage
 
 from src.nodes.grader import (
     grade_compliance_node,
@@ -38,6 +39,11 @@ class GraphState(TypedDict):
     compliance_reason: str
 
 
+def handle_unrelated_content(state):
+    state["response"] = HumanMessage(content="The query appears to be out of scope for this system.")
+    return state
+
+
 def build_graph():
     """
     Build the workflow as a graph.
@@ -55,6 +61,8 @@ def build_graph():
     workflow.add_node("grader_quality", grade_quality_node)
     workflow.add_node("grader_compliance", grade_compliance_node)
 
+    workflow.add_node("out_of_scope", handle_unrelated_content)
+
     workflow.add_edge(START, "complexity_ranking")
 
     workflow.add_conditional_edges(
@@ -64,9 +72,11 @@ def build_graph():
             Routing.COMPLEXITY_LOW: "retrieval_prompt",
             Routing.COMPLEXITY_MEDIUM: "retrieval_prompt",
             Routing.COMPLEXITY_HIGH: "web_search",
+            Routing.COMPLEXITY_UNRELATED: "out_of_scope",
         },
     )
 
+    workflow.add_edge("out_of_scope", END)
     workflow.add_edge("retrieval_prompt", "vectorstore_recursive")
     workflow.add_edge("vectorstore_recursive", "response_constructor")
     workflow.add_edge("response_constructor", "grader_hallucination")

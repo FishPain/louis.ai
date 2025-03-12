@@ -4,3 +4,4 @@ class Routing:
     COMPLEXITY_LOW = "low"
     COMPLEXITY_MEDIUM = "medium"
     COMPLEXITY_HIGH = "high"
+    COMPLEXITY_UNRELATED = "unrelated"

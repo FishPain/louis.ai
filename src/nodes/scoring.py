@@ -3,11 +3,15 @@ from langchain.schema import HumanMessage
 from src.constant import Routing
 from src.templates import ComplexityRank
 
+from langchain.schema import HumanMessage
+from src.constant import Routing
+from src.templates import ComplexityRank
+
 
 def complexity_scoring_node(state):
     """
     Uses an LLM to rank the complexity of the query based on what is already known in the vector store.
-    Returns 'LOW', 'MEDIUM', or 'HIGH' complexity.
+    Returns 'LOW', 'MEDIUM', 'HIGH' complexity, or 'UNRELATED' if it's out of scope.
     """
 
     query = state["query"]
@@ -16,39 +20,59 @@ def complexity_scoring_node(state):
 
     # Define the improved decision prompt
     decision_prompt = f"""
-   You are an advanced AI system specializing in evaluating the complexity of legal queries. 
+	You are an advanced AI legal reasoning system. Your role is to **evaluate the complexity of a legal query** relative to the knowledge contained in the vector store.
 
-   Your task is to **analyze the user's query** in relation to the **knowledge stored in the vector store** and determine its complexity level.
+	---
 
-   ### **Assessment Process**
-   Follow these steps:
-   1. **Understand the Query**  
-      - What is the user asking?  
-      - Does it involve a straightforward fact, a legal interpretation, or a multi-faceted legal issue?  
-      
-   2. **Analyze Available Knowledge**  
-      - Review the provided summary of the vector store's contents.  
-      - Identify if the vector store contains **direct answers, partial information, or lacks relevant content** for this query.  
+	### ✅ **Your Task**
+	1. **Understand the User Query**
+	- What legal information is the user requesting?
+	- Does it concern a simple fact, require legal interpretation, or involve multiple legal issues?
 
-   3. **Rank the Query Complexity**  
-      Choose one of the following rankings based on the level of effort required to answer the query:  
+	2. **Analyze the Vector Store Knowledge**
+	- Review the **Vector Store Summary** below.
+	- Determine if the query is **fully answered**, **partially answered**, or **unrelated** to the knowledge it contains.
 
-      - **LOW**: The query is fully covered by the vector store. The answer can be directly retrieved.  
-      - **MEDIUM**: Some relevant information is available, but additional **reasoning or minor external context** may be required.  
-      - **HIGH**: The vector store lacks sufficient information, and **external resources or case law research** will be necessary.  
+	---
 
-   ---
-   ### **Vector Store Summary**
-   {vectorstore_summary}
+	### ✅ **How to Rank Complexity**
+	Select **one** of the following complexity levels:
 
-   ### **User Query**
-   {query}
+	- **{Routing.COMPLEXITY_UNRELATED} (UNRELATED)**  
+	> The query is **not relevant** to the topics covered by the vector store.  
+	> Example: The vector store contains information about **Singapore employment law**, but the user is asking about **EU data privacy regulations**.  
+	> If the query falls outside the scope of the available content, rank it as UNRELATED.
 
-   ---
-   ### **Final Decision**
-   Rank the complexity as one of the following:  
-   **({Routing.COMPLEXITY_LOW} / {Routing.COMPLEXITY_MEDIUM} / {Routing.COMPLEXITY_HIGH})**
-   """
+	- **{Routing.COMPLEXITY_LOW} (LOW)**  
+	> The query is directly and fully answered by information in the vector store.  
+	> No extra reasoning or external information is required.
+
+	- **{Routing.COMPLEXITY_MEDIUM} (MEDIUM)**  
+	> Some relevant information is available in the vector store.  
+	> Minor reasoning or external context may be needed to complete the answer.
+
+	- **{Routing.COMPLEXITY_HIGH} (HIGH)**  
+	> The vector store lacks sufficient information to answer the query fully.  
+	> Significant external research or legal analysis would be required.
+
+	---
+
+	### ✅ **Vector Store Summary**
+	{vectorstore_summary}
+
+	---
+
+	### ✅ **User Query**
+	{query}
+
+	---
+
+	### ✅ **Final Decision**
+	Choose one complexity ranking from the following list:  
+	**{Routing.COMPLEXITY_UNRELATED} / {Routing.COMPLEXITY_LOW} / {Routing.COMPLEXITY_MEDIUM} / {Routing.COMPLEXITY_HIGH}**
+
+	Respond with the selected complexity level only.
+	"""
 
     # Set up the structured output parser
     structured_output_parser = model.with_structured_output(ComplexityRank)
@@ -57,5 +81,6 @@ def complexity_scoring_node(state):
     decision_response = structured_output_parser.invoke(
         [HumanMessage(content=decision_prompt)]
     )
+
     state["complexity"] = decision_response.complexity
     return state

@@ -5,7 +5,7 @@ from src.constant import Routing
 
 class ComplexityRank(BaseModel):
     complexity: Literal[
-        Routing.COMPLEXITY_LOW, Routing.COMPLEXITY_MEDIUM, Routing.COMPLEXITY_HIGH
+        Routing.COMPLEXITY_LOW, Routing.COMPLEXITY_MEDIUM, Routing.COMPLEXITY_HIGH, Routing.COMPLEXITY_UNRELATED
     ] = Field(
         description="Rank the complexity of the query as LOW, MEDIUM, or HIGH based on the available knowledge in the vectorstore."
     )
