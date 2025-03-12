@@ -28,7 +28,7 @@ def create_retrieval_prompt_node(state):
 	2. **Expand with Synonyms and Variations**: Include alternative phrasings or terminology to enhance vector similarity matching.
 	3. **Clarify and Disambiguate**: Remove vague language; ensure precision and legal accuracy.
 	4. **Add Relevant Legal Context**: Mention applicable jurisdictions, laws, or precedents if relevant or implied.
-	5. **Avoid Hallucination**: Do not introduce information that isn't present or implied by the original query.
+	5. **Avoid Hallucination**: If you are not sure, simply state that you are not sure. Do not introduce information that isn't present or implied by the original query.
 	{f"6. **Special Note**: {hallucination_reason}" if hallucination else ""}
     {f"6. **Special Note**: {quality_reason}" if quality else ""}
 	{f"6. **Special Note**: {compliance_reason}" if compliance else ""}
