@@ -7,39 +7,55 @@ def create_retrieval_prompt_node(state):
     """
     Node: Create an optimized retrieval prompt for similarity search in the vector store.
     """
+
     query = state["query"]
     model = state["model"]
+    hallucination = state.get("hallucination", False)
+    hallucination_reason = state.get("hallucination_reason", "")
+    quality = state.get("quality", False)
+    quality_reason = state.get("quality_reason", "")
+    compliance = state.get("compliance", False)
+    compliance_reason = state.get("compliance_reason", "")
 
     # Construct an optimized retrieval prompt
     prompt = f"""
-    You are an expert in **optimizing queries for similarity-based vector retrieval**. Your goal is to **rewrite the given query** 
-    into a **concise, search-optimized prompt** that improves the relevance of retrieved documents.
+	You are an expert in **optimizing legal queries for similarity-based vector retrieval**. Your task is to **rewrite the user query** into a **concise, search-optimized prompt** to improve the relevance and accuracy of retrieved documents from a legal vector database.
 
-    ---
-    ### **Optimization Guidelines**
-    Follow these steps to generate the best possible retrieval prompt:
+	---
 
-    1. **Extract Key Concepts**: Identify the most critical **legal terms, case names, and regulatory keywords** in the query.
-    2. **Expand Query with Synonyms & Variations**: Reformulate the prompt using **different phrasings** that enhance similarity matching.
-    3. **Remove Ambiguity**: Make the query **precise**, ensuring it aligns well with indexed documents.
-    4. **Ensure Context Completeness**: Add essential **legal context** (e.g., jurisdiction, applicable laws, relevant case precedents).
-    5. **Format for Search Optimization**: Structure the query so that it **maximizes cosine similarity scores in the embedding space**.
+	### ✅ **Guidelines for Optimizing the Retrieval Prompt**
+	1. **Extract Key Legal Concepts**: Focus on critical legal terms, case names, jurisdictions, and regulations present in the query.
+	2. **Expand with Synonyms and Variations**: Include alternative phrasings or terminology to enhance vector similarity matching.
+	3. **Clarify and Disambiguate**: Remove vague language; ensure precision and legal accuracy.
+	4. **Add Relevant Legal Context**: Mention applicable jurisdictions, laws, or precedents if relevant or implied.
+	5. **Avoid Hallucination**: Do not introduce information that isn't present or implied by the original query.
+	{f"6. **Special Note**: {hallucination_reason}" if hallucination else ""}
+    {f"6. **Special Note**: {quality_reason}" if quality else ""}
+	{f"6. **Special Note**: {compliance_reason}" if compliance else ""}
+	Lastly. **Format for Embedding Optimization**: Make the prompt concise, rich in keywords, and structured to maximize cosine similarity scores.
 
-    ---
-    ### **Example Transforexcluded_file_idsmations**
-    **User Query**: "What are the rights of employees in Singapore regarding wrongful dismissal?"  
-    **Optimized Retrieval Prompt**:  
-    - "Singapore employment law: wrongful dismissal legal rights, case precedents, statutory protections."  
-    - "Retrieve legal statutes, labor laws, and case law on wrongful termination in Singapore. Prioritize government regulations."  
+	---
 
-    ---
-    **Now, optimize the following query for vector retrieval.**  
+	### ✅ **Example Transformations**
+	**User Query:**  
+	"What are the rights of employees in Singapore regarding wrongful dismissal?"
 
-    **User Query:**  
-    {query}  
+	**Optimized Retrieval Prompts:**  
+	- "Singapore employment law: wrongful dismissal rights, legal protections, case precedents."  
+	- "Retrieve statutes, case law, and regulations on employee termination and wrongful dismissal in Singapore."
 
-    **Optimized Retrieval Prompt:**  
-    """
+	---
+
+	### ✅ **Your Task**
+	Rewrite the following user query into a search-optimized prompt for vector retrieval.
+
+	**User Query:**  
+	{query}
+
+	---
+
+	### ✅ **Optimized Retrieval Prompt:**  
+	"""
 
     response = model.invoke([HumanMessage(content=prompt)])
     state["response"] = response
@@ -82,6 +98,8 @@ def check_completeness_with_llm(state):
     """
 
     structured_output_parser = model.with_structured_output(ResponseSufficency)
-    response = structured_output_parser.invoke([HumanMessage(content=completeness_prompt)])
-    
+    response = structured_output_parser.invoke(
+        [HumanMessage(content=completeness_prompt)]
+    )
+
     return response

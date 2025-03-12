@@ -1,3 +1,4 @@
+# Langchain
 langchain
 langchain-core
 langchain-community
@@ -6,9 +7,14 @@ langchain_postgres
 langsmith
 langgraph
 
+# Lamma Cloud
 llama-index-core
 llama-parse
 llama-index-readers-file
 
+# huggingface
+datasets
+
+# Others
 python-dotenv
 streamlit

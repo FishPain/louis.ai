@@ -1,4 +1,7 @@
 import re
+from src.templates import HallucinationGrader, QualityGrader, ComplianceGrader
+from langchain.schema import HumanMessage
+
 
 def grade_hallucination_node(state):
     """
@@ -7,7 +10,7 @@ def grade_hallucination_node(state):
     Then set 'hallucination' to True (YES) or False (NO).
     """
     model = state["model"]
-    response = state['response']
+    response = state["response"]
 
     check_prompt = f"""
     **Role:**  
@@ -43,63 +46,49 @@ def grade_hallucination_node(state):
     ---
 
     ### **Output Format**
-    "hallucination": "YES" | "NO", "reason": "Brief explanation of factuality assessment."
+    "hallucination": "True" | "False", "reason": "Brief explanation of factuality assessment."
     """
 
-    response = model.invoke([check_prompt])
-    content = response.content
-    # Split the output to just "hallucination": "YES" | "NO"
-    valid_str = content.upper().split(",")[0]
-    is_hallucinated = "YES" in content.upper()
-    # The reason should only come after the second ':'
-    reason_str = " ".join(content.split(':')[2:])
-
-    state["hallucination"] = is_hallucinated
-    state["hallucination_reason"] = reason_str
+    structured_output_parser = model.with_structured_output(HallucinationGrader)
+    decision_response = structured_output_parser.invoke(
+        [HumanMessage(content=check_prompt)]
+    )
+    state["hallucination"] = decision_response.hallucination
+    state["hallucination_reason"] = decision_response.reason
     return state
-
 
 
 def grade_quality_node(state):
     """
     Determines if the response meets a certain 'quality' threshold.
-    We'll ask the model: "Is the response high-quality? (YES/NO)"
-    Then set 'quality' to True (YES) or False (NO).
+    Uses a model to assess relevance, coherence, and completeness.
+    Sets 'quality' to True if all criteria are met; otherwise, False.
+    Also provides reasoning.
     """
     model = state["model"]
-    query = state['query']
-    response = state['response']
+    query = state["query"]
+    response = state["response"]
 
     check_prompt = f"""
-
-    **Role:**  
-    You are an **expert AI legal evaluator** specializing in grading the quality of AI-generated legal responses. 
-    Your objective is to assign a **score between 0 and 10** based on legal relevance, coherence, and completeness.
+    You are an expert AI legal evaluator specializing in grading the quality of AI-generated legal responses.
+    Your objective is to evaluate the following response based on legal relevance, coherence, and completeness.
 
     ---
 
-    ### **Task Instructions**
-    1. **Analyze the Given Response:**
+    ### Task Instructions
+    1. Analyze the Given Response:
     - Examine the response for clarity, accuracy, and completeness.
     - Ensure the response directly answers the user’s query.
     - Identify any vague, misleading, or incomplete content.
 
-    2. **Grade the Response Based on the Following Criteria:**
-    - **Relevance (0-10):** Does the response fully address the user’s query?
-    - **Coherence (0-10):** Is the response logically structured and easy to understand?
-    - **Completeness (0-10):** Does the response provide enough detail to be useful?
+    2. Grade the Response Based on the Following Criteria:
+    - relevance (Boolean): Does the response fully address the user’s query?
+    - coherence (Boolean): Is the response logically structured and easy to understand?
+    - completeness (Boolean): Does the response provide enough detail to be useful?
 
-    3. **Calculate the Final Score:**
-    - The **overall score** is the average of the three criteria.
-    - Round to the nearest one.
-
-    4. **Output Format:**
-    - **Return the output in an easily parsable format:** 
-        "score": X.X, "reason": "Brief explanation of the grading decision."
-    - **Ensure the explanation is concise** (no more than one sentence).
+    ---
 
     ### Inputs:
-
     User Query:
     {query}
 
@@ -108,35 +97,42 @@ def grade_quality_node(state):
 
     ---
 
-    ### **Output Format**
-    "score": X.X, "reason": "Brief explanation of the grading decision."
+    ### Output Format (in JSON):
+    {{
+    "relevance": true/false,
+    "coherence": true/false,
+    "completeness": true/false,
+    "reason": "Brief explanation of the grading decision."
+    }}
     """
 
-    response = model.invoke([check_prompt])
-    content = response.content
-    # Regex to pull the score from the output string
-    match = re.search(r'(\d+\.\d+)', content)
-    score = float(match.group(1))
-    is_high_quality = score > 5.0
+    structured_output_parser = model.with_structured_output(QualityGrader)
+    decision_response = structured_output_parser.invoke(
+        [HumanMessage(content=check_prompt)]
+    )
 
-    # The reason should only come after the second ':'
-    reason_str = " ".join(content.split(":")[2:])
-    
-    state["quality"] = is_high_quality
-    state["quality_reason"] = reason_str
+    # Assume decision_response is an object or dict with the following fields
+    relevance = decision_response.relevance
+    coherence = decision_response.coherence
+    completeness = decision_response.completeness
+
+    # Quality is True only if all three criteria are True
+    state["quality"] = relevance and coherence and completeness
+    state["quality_reason"] = decision_response.reason
+
     return state
 
 
 def grade_compliance_node(state):
     """
-    Checks if the response meets certain compliance criteria (e.g., 
-    no disallowed content, no policy violations). 
+    Checks if the response meets certain compliance criteria (e.g.,
+    no disallowed content, no policy violations).
     We'll ask the model: "Is this text compliant? (YES/NO)"
     Then set 'compliance' to True (YES) or False (NO).
     """
-    
+
     model = state["model"]
-    response = state['response']
+    response = state["response"]
 
     check_prompt = f"""
 
@@ -178,18 +174,14 @@ def grade_compliance_node(state):
     ---
 
     ### **Output Format**
-    "valid": "YES" | "NO", "reason": "Brief explanation of legal compliance or non-compliance."
+    "valid": "True" | "False", "reason": "Brief explanation of legal compliance or non-compliance."
 
     """
 
-    response = model.invoke([check_prompt])
-    content = response.content
-    # Split the output to just "valid": "YES" | "NO"
-    valid_str = content.upper().split(",")[0]
-    is_compliant = "YES" in valid_str
-    # The reason should only come after the second ':'
-    reason_str = " ".join(content.split(':')[2:])
-
-    state["compliance"] = is_compliant
-    state["compliance_reason"] = reason_str
+    structured_output_parser = model.with_structured_output(ComplianceGrader)
+    decision_response = structured_output_parser.invoke(
+        [HumanMessage(content=check_prompt)]
+    )
+    state["compliance"] = decision_response.compliance
+    state["compliance_reason"] = decision_response.reason
     return state
