@@ -14,18 +14,21 @@ import pickle
 import getpass
 import os
 
+from ranker import ReRanker
 
 if not os.environ.get("OPENAI_API_KEY"):
     os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
 
+
 class HNSWDistanceStrategy(str, enum.Enum):
-        """Enumerator of the HNSW index Distance strategies."""
-        EUCLIDEAN = "vector_l2_ops"
-        COSINE = "vector_cosine_ops"
-        MAX_INNER_PRODUCT = "vector_ip_ops"
-        L1_DISTANCE = "vector_l1_ops"
-        HAMMING_DISTANCE = "bit_hamming_ops"
-        Jaccard_DISTANCE = "bit_jaccard_ops"
+    """Enumerator of the HNSW index Distance strategies."""
+
+    EUCLIDEAN = "vector_l2_ops"
+    COSINE = "vector_cosine_ops"
+    MAX_INNER_PRODUCT = "vector_ip_ops"
+    L1_DISTANCE = "vector_l1_ops"
+    HAMMING_DISTANCE = "bit_hamming_ops"
+    Jaccard_DISTANCE = "bit_jaccard_ops"
 
 
 class HNSWIndexing:
@@ -45,7 +48,7 @@ class HNSWIndexing:
         self.session.execute(sqlalchemy.text("SET LOCAL enable_seqscan = off;"))
         self.session.execute(sqlalchemy.text(f"SET LOCAL hnsw.ef_search = 100;"))
         self.session.commit()
-        
+
     def _prepare_create_hnsw_index_query(
         self,
         dims: int = ADA_TOKEN_COUNT,
@@ -96,7 +99,8 @@ class VectorDB:
             connection=self.connection,
             use_jsonb=True,
         )
-    
+        self.reranker = ReRanker()
+
     def enable_hnsw_indexing(self):
         hnsw = HNSWIndexing(self.vector_store.session_maker)
         hnsw.create_hnsw_index()
@@ -106,10 +110,11 @@ class VectorDB:
             documents, ids=[doc.metadata["id"] for doc in documents]
         )
 
-    def similarity_search(self, query, k=3):
-        docs = self.vector_store.similarity_search(query, k=k)
-        return docs
-
+    def similarity_search(self, query, top_k=3, initial_k=10):
+        docs = self.vector_store.similarity_search(query, k=initial_k)
+        reranked_docs = self.reranker.rerank(query, docs, top_k=top_k)
+        reranked_docs = [doc[0] for doc in reranked_docs]
+        return reranked_docs
 
 class ExtractDocs:
     def __init__(self):
@@ -120,7 +125,7 @@ class ExtractDocs:
         parser = LlamaParse(
             result_type="markdown"  # "markdown" and "text" are available
         )
-        
+
         # use SimpleDirectoryReader to parse our file
         file_extractor = {".pdf": parser}
         self.documents = SimpleDirectoryReader(
@@ -128,7 +133,7 @@ class ExtractDocs:
         ).load_data()
 
         embed_model = OpenAIEmbedding(model="text-embedding-3-small")
-        
+
         splitter = SemanticSplitterNodeParser(
             buffer_size=1, breakpoint_percentile_threshold=95, embed_model=embed_model
         )

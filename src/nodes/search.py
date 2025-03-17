@@ -28,7 +28,11 @@ def vectorstore_node(state):
     excluded_file_ids = state.get("excluded_file_ids", None)  # Default to None (include all files)
 
     # Step 1: Retrieve relevant documents
-    retrieved_docs = vectorstore.similarity_search(query, k=len(excluded_file_ids)+3)  # Retrieve more documents before filtering
+    retrieved_docs = vectorstore.similarity_search(
+        query, 
+        top_k=len(excluded_file_ids)+3,
+        initial_k=len(excluded_file_ids)+10
+    )  # Retrieve more documents before filtering
 
     # Step 2: Filter out excluded documents
     if excluded_file_ids:
