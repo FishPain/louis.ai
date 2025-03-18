@@ -40,7 +40,9 @@ class GraphState(TypedDict):
 
 
 def handle_unrelated_content(state):
-    state["response"] = HumanMessage(content="The query appears to be out of scope for this system.")
+    state["response"] = HumanMessage(
+        content="The query appears to be out of scope for this system."
+    )
     return state
 
 
@@ -69,9 +71,8 @@ def build_graph():
         "complexity_ranking",
         lambda state: state["complexity"],
         {
-            Routing.COMPLEXITY_LOW: "retrieval_prompt",
+            Routing.COMPLEXITY_LOW: "web_search",
             Routing.COMPLEXITY_MEDIUM: "retrieval_prompt",
-            Routing.COMPLEXITY_HIGH: "web_search",
             Routing.COMPLEXITY_UNRELATED: "out_of_scope",
         },
     )

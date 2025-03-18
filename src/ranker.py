@@ -2,14 +2,14 @@ from transformers import AutoTokenizer, AutoModel
 from typing import Optional, List, Tuple
 import torch
 
-class ReRanker:
-    DEFAULT_COLBERT_MAX_LENGTH = 512
 
+class ReRanker:
     def __init__(
         self,
         model: str = "colbert-ir/colbertv2.0",
         tokenizer: str = "colbert-ir/colbertv2.0",
         device: Optional[str] = None,
+        DEFAULT_COLBERT_MAX_LENGTH=512,
     ):
         self._tokenizer = AutoTokenizer.from_pretrained(tokenizer)
         self._model = AutoModel.from_pretrained(model)
@@ -19,9 +19,19 @@ class ReRanker:
             else "mps" if torch.mps.is_available() else "cpu"
         )
         self._model.to(self._device)
+        self.DEFAULT_COLBERT_MAX_LENGTH = DEFAULT_COLBERT_MAX_LENGTH
 
     def _calculate_sim(self, query: str, documents_text_list: List[str]) -> List[float]:
-        query_encoding = self._tokenizer(query, return_tensors="pt").to(self._device)
+        query_encoding = self._tokenizer(
+            query,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=self.DEFAULT_COLBERT_MAX_LENGTH  # Which is set to 512!
+        )
+        
+        query_encoding = {k: v.to(self._device) for k, v in query_encoding.items()}
+        
         query_embedding = self._model(
             **query_encoding
         ).last_hidden_state  # [1, query_len, embed_dim]
@@ -33,8 +43,10 @@ class ReRanker:
                 document_text,
                 return_tensors="pt",
                 truncation=True,
-                max_length=self.DEFAULT_COLBERT_MAX_LENGTH,
-            ).to(self._device)
+                padding=True,
+                max_length=self.DEFAULT_COLBERT_MAX_LENGTH
+            )
+            document_encoding = {k: v.to(self._device) for k, v in document_encoding.items()}
 
             document_embedding = self._model(
                 **document_encoding

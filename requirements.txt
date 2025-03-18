@@ -11,10 +11,13 @@ langgraph
 llama-index-core
 llama-parse
 llama-index-readers-file
+llama-index-embeddings-openai
 
 # huggingface
-datasets
+transformers
+torch
 
 # Others
 python-dotenv
 streamlit
+python-docx

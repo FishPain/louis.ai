@@ -2,7 +2,11 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from langgraph.prebuilt import create_react_agent
 from langchain.schema import HumanMessage
 
-from src.nodes.retrieval import check_completeness_with_llm, create_retrieval_prompt_node
+from src.nodes.retrieval import (
+    check_completeness_with_llm,
+    create_retrieval_prompt_node,
+)
+
 
 def web_search_node(state):
     """
@@ -25,19 +29,24 @@ def vectorstore_node(state):
     """
     query = state["query"]
     vectorstore = state["db"]
-    excluded_file_ids = state.get("excluded_file_ids", None)  # Default to None (include all files)
+    excluded_file_ids = state.get(
+        "excluded_file_ids", None
+    )  # Default to None (include all files)
 
     # Step 1: Retrieve relevant documents
     retrieved_docs = vectorstore.similarity_search(
-        query, 
-        top_k=len(excluded_file_ids)+3,
-        initial_k=len(excluded_file_ids)+10
+        query, top_k=len(excluded_file_ids) + 3, initial_k=len(excluded_file_ids) + 10
     )  # Retrieve more documents before filtering
+
+    # extract only the content
+    retrieved_docs = [doc[0] for doc in retrieved_docs]
 
     # Step 2: Filter out excluded documents
     if excluded_file_ids:
         retrieved_docs = [
-            doc for doc in retrieved_docs if doc.metadata.get("id") not in excluded_file_ids
+            doc
+            for doc in retrieved_docs
+            if doc.metadata.get("id") not in excluded_file_ids
         ]
 
     # Step 3: Limit the result to top-k after filtering
@@ -47,7 +56,7 @@ def vectorstore_node(state):
     if not retrieved_docs:
         state["response"] = "No relevant legal documents were found in the database."
         return state
-    
+
     state["retrieved_docs"] = retrieved_docs
     return state
 
@@ -58,7 +67,7 @@ def response_constructor_node(state):
     retrieved_docs = state["retrieved_docs"]
 
     context = "\n\n".join([f"- {doc.page_content}" for doc in retrieved_docs])
-    
+
     # Step 4: Construct an optimized RAG prompt
     rag_prompt = f"""
     You are a **highly skilled legal expert specializing in Singaporean law**, with extensive experience in **contract drafting, 
@@ -121,7 +130,9 @@ def recursive_vectorstore_node(state):
 
     for missing_query in missing_queries:
         additional_state = state.copy()
-        additional_state["query"] = f"""
+        additional_state[
+            "query"
+        ] = f"""
         The retrieved documents are missing critical legal information regarding: **{missing_query}**.
         
         ### **Previous Query**
@@ -129,8 +140,12 @@ def recursive_vectorstore_node(state):
 
         Please refine the search and retrieve documents that provide relevant information on **{missing_query}**.
         """
-        additional_state = create_retrieval_prompt_node(additional_state)  # Generate a new retrieval prompt
-        additional_result = vectorstore_node(additional_state)  # Retrieve missing information
+        additional_state = create_retrieval_prompt_node(
+            additional_state
+        )  # Generate a new retrieval prompt
+        additional_result = vectorstore_node(
+            additional_state
+        )  # Retrieve missing information
         # Merge newly retrieved documents while avoiding duplicates
         state["retrieved_docs"].extend(additional_result["retrieved_docs"])
 

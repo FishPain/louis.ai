@@ -8,13 +8,14 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain_postgres.vectorstores import PGVector
+import tiktoken
 import sqlalchemy
 import enum
 import pickle
 import getpass
 import os
 
-from ranker import ReRanker
+from src.ranker import ReRanker
 
 if not os.environ.get("OPENAI_API_KEY"):
     os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
@@ -105,29 +106,52 @@ class VectorDB:
         hnsw = HNSWIndexing(self.vector_store.session_maker)
         hnsw.create_hnsw_index()
 
-    def add_documents(self, documents):
-        self.vector_store.add_documents(
-            documents, ids=[doc.metadata["id"] for doc in documents]
-        )
+    def add_documents(self, documents, ignore_document_by_similarity_threshold=0.8):
+        docs_to_add = []
+        for doc in documents:
+            # Search for similar documents in the store
+            # similar_docs = self.similarity_search(
+            #     doc.page_content, top_k=1, initial_k=1
+            # )
+
+            # score = similar_docs[0][1]
+
+            # if score >= ignore_document_by_similarity_threshold:
+            #     print(
+            #         f"Document with id {doc.metadata['id']} already present. Skipping."
+            #     )
+            #     continue
+
+            docs_to_add.append(doc)
+
+        if docs_to_add:
+            self.vector_store.add_documents(
+                docs_to_add, ids=[doc.metadata["id"] for doc in docs_to_add]
+            )
 
     def similarity_search(self, query, top_k=3, initial_k=10):
         docs = self.vector_store.similarity_search(query, k=initial_k)
         reranked_docs = self.reranker.rerank(query, docs, top_k=top_k)
-        reranked_docs = [doc[0] for doc in reranked_docs]
         return reranked_docs
 
+    def truncate_text_by_tokens(self, text, max_tokens=512, model_name="text-embedding-3-small"):
+        tokenizer = tiktoken.encoding_for_model(model_name)
+        tokens = tokenizer.encode(text)
+        truncated_tokens = tokens[:max_tokens]
+        return tokenizer.decode(truncated_tokens)
+
+
 class ExtractDocs:
-    def __init__(self):
+    def __init__(self, document_type="pdf"):
         self.documents = None
+        self.document_type = document_type
 
     def extract(self, file_path):
         # set up parser
-        parser = LlamaParse(
-            result_type="markdown"  # "markdown" and "text" are available
-        )
+        parser = LlamaParse(result_type="text")  # "markdown" and "text" are available
 
         # use SimpleDirectoryReader to parse our file
-        file_extractor = {".pdf": parser}
+        file_extractor = {f".{self.document_type}": parser}
         self.documents = SimpleDirectoryReader(
             input_files=[file_path], file_extractor=file_extractor
         ).load_data()
