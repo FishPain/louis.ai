@@ -1,188 +1,214 @@
 import streamlit as st
 
-# Streamlit UI
 st.set_page_config(page_title="Louis.AI - Legal Assistant", layout="wide")
+
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from src.database import VectorDB, ExtractDocs
+from src.model import *
+from src.utils import check_required_env_vars
+from docx import Document as DocxDocument
+from io import BytesIO
+import re
+import os
+import tempfile
+
+
+# ---------- Setup Resources ----------
+@st.cache_resource
+def initialize_resources():
+    load_dotenv()
+    check_required_env_vars()
+    db = VectorDB()
+    db.enable_hnsw_indexing()
+    model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    response = build_graph()
+    app = response.compile()
+    return db, model, app
+
+
+db, model, app = initialize_resources()
+
+
+# ---------- Functions ----------
+def clean_markdown(content):
+    content = re.sub(r"^#+\s*", "", content, flags=re.MULTILINE)
+    content = re.sub(r"\*\*(.*?)\*\*", r"\1", content)
+    content = re.sub(r"\*(.*?)\*", r"\1", content)
+    content = re.sub(r"\n-{3,}\n", "\n", content)
+    return content
+
+
+def generate_docx(content, filename="generated_document.docx"):
+    cleaned_content = clean_markdown(content)
+    doc = DocxDocument()
+    for para in cleaned_content.split("\n\n"):
+        doc.add_paragraph(para.strip())
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer, filename
+
+
+def save_file_locally(file):
+    temp_dir = tempfile.gettempdir()  # You can use a custom directory too
+
+    file_extension = os.path.splitext(file.name)[1]
+    temp_file_path = os.path.join(temp_dir, f"uploaded_file{file_extension}")
+
+    with open(temp_file_path, "wb") as f:
+        f.write(file.getbuffer())
+
+    print(f"File saved at: {temp_file_path}")
+    # delete the temp file when done
+    return temp_file_path, file.type
+
+
+def extract_file_content(file_path, file_type):
+    # Pass the file path to ExtractDocs instead of the file object
+    if file_type == "application/pdf":
+        return ExtractDocs().extract_document(file_path, "pdf")
+    elif file_type in [
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]:
+        return ExtractDocs().extract_document(file_path, "docx")
+    elif file_type == "text/plain":
+        # For text files, you can return raw content instead of calling ExtractDocs
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    return None
+
+
+def user_wants_file(text):
+    keywords = ["generate", "create", "draft", "write", "document", "contract"]
+    return any(k in text.lower() for k in keywords)
+
+
+# ---------- Streamlit Layout ----------
+if "document_loading" not in st.session_state:
+    st.session_state.document_loading = False
 
 with st.sidebar:
     st.header("Legal Tools")
     tool_option = st.radio(
-        "Choose an option:",
-        [
-            "Chat",
-            "Draft Document",
-            "Legal Information Lookup",
-            "File Upload"  # This remains as a separate option if needed
-        ],
-        key="tool_option"
+        "Available Tool:", ["Legal Assistant Chatbot"], key="tool_option"
     )
-    
-    # Sidebar chat history (only for Chat tool)
-    if tool_option == "Chat":
-        st.header("Chat History")
-        
-        if "conversations" not in st.session_state:
-            st.session_state.conversations = []
-        if "current_conversation_index" not in st.session_state:
-            st.session_state.current_conversation_index = None
-        
-        if st.button("➕ New Conversation", use_container_width=True):
-            st.session_state.conversations.append([])  # Start a new empty conversation
-            st.session_state.current_conversation_index = len(st.session_state.conversations) - 1
-        
-        for i, convo in enumerate(st.session_state.conversations):
-            if i != st.session_state.current_conversation_index and not convo:
-                continue
-            if st.button(f"Conversation {i+1}", key=f"convo_{i}", use_container_width=True):
-                st.session_state.current_conversation_index = i
 
-if tool_option == "Chat":
+    if "conversations" not in st.session_state:
+        st.session_state.conversations = []
+    if "current_conversation_index" not in st.session_state:
+        st.session_state.current_conversation_index = None
+    if "file_uploader_key" not in st.session_state:
+        st.session_state.file_uploader_key = "file_uploader_0"
+    if st.button("➕ New Conversation", use_container_width=True):
+        st.session_state.conversations.append([])
+        st.session_state.current_conversation_index = (
+            len(st.session_state.conversations) - 1
+        )
+    for i, convo in enumerate(st.session_state.conversations):
+        if i != st.session_state.current_conversation_index and not convo:
+            continue
+        if st.button(f"Conversation {i+1}", key=f"convo_{i}", use_container_width=True):
+            st.session_state.current_conversation_index = i
+
+if tool_option == "Legal Assistant Chatbot":
     st.title("Louis.AI - Your Legal Assistant")
     st.write("### Ask me legal questions or upload files for context!")
-    
-    # Ensure valid conversation index
+
     if st.session_state.current_conversation_index is None:
         st.session_state.current_conversation_index = 0
         if not st.session_state.conversations:
             st.session_state.conversations.append([])
-    
-    current_conversation = st.session_state.conversations[st.session_state.current_conversation_index]
-    
-    # Display chat messages
+
+    current_conversation = st.session_state.conversations[
+        st.session_state.current_conversation_index
+    ]
+
+    # Show conversation history
     for msg in current_conversation:
         st.chat_message(msg["role"]).write(msg["content"])
-    
-    # --------- File Uploader in Chat Area ---------
-    # Using a key specific for chat so it doesn't conflict with the standalone file upload option.
+
+    # ---------- FILE UPLOADER ----------
     uploaded_file = st.file_uploader(
         "Upload a file (optional):",
         type=["pdf", "doc", "docx", "txt"],
-        key="chat_file_uploader"
+        key=st.session_state.file_uploader_key,
     )
-    
-    # Process the uploaded file only once per unique file name
-    if uploaded_file is not None:
-        # Use a session state variable to ensure we process a new file only once.
-        if "last_chat_file" not in st.session_state or st.session_state.last_chat_file != uploaded_file.name:
-            st.session_state.last_chat_file = uploaded_file.name
-            
-            file_details = (
-                f"**Uploaded file:** {uploaded_file.name}  \n"
-                f"**Type:** {uploaded_file.type}  \n"
-                f"**Size:** {uploaded_file.size} bytes"
-            )
-            # Append file details as a chat message from the user
-            current_conversation.append({"role": "user", "content": file_details})
-            st.chat_message("user").write(file_details)
-            
-            # If it's a plain text file, also display its content.
-            if uploaded_file.type == "text/plain":
-                try:
-                    # Using getvalue() to retrieve the entire file content
-                    file_content = uploaded_file.getvalue().decode("utf-8")
-                    content_message = f"**File Content:**\n{file_content}"
-                    current_conversation.append({"role": "user", "content": content_message})
-                    st.chat_message("user").write(content_message)
-                except Exception as e:
-                    error_message = f"Error reading file: {e}"
-                    current_conversation.append({"role": "user", "content": error_message})
-                    st.chat_message("user").write(error_message)
-            else:
-                note_message = "Preview not available for this file type."
-                current_conversation.append({"role": "user", "content": note_message})
-                st.chat_message("user").write(note_message)
-    
-    # --------- Chat Input Area ---------
+
+    if uploaded_file:
+        file_path, file_type = save_file_locally(uploaded_file)
+        st.session_state["uploaded_file_path"] = file_path
+        st.session_state["uploaded_file_type"] = file_type
+        st.success(
+            "File uploaded and ready to be analyzed after you submit a question."
+        )
+
     user_query = st.chat_input("Enter your legal question...")
-    
+
     if user_query:
-        # Append user query to chat history
         current_conversation.append({"role": "user", "content": user_query})
         st.chat_message("user").write(user_query)
-        
-        # Generate AI response (Replace this with actual AI logic)
-        response = "(Louis.AI Response Placeholder)"
-        
-        # Append AI response to chat history
-        current_conversation.append({"role": "ai", "content": response})
-        st.chat_message("ai").write(response)
 
-elif tool_option == "Legal Information Lookup":
-    st.title("Legal Information Lookup")
-    st.write("### Quickly retrieve relevant legal information!")
-    
-    search_query = st.text_input("Enter legal topic or keyword:")
+        file_path = st.session_state.get("uploaded_file_path", None)
+        file_type = st.session_state.get("uploaded_file_type", None)
+        file_content = None
+        if file_path and file_type:
+            with st.spinner("Extracting File Content..."):
+                file_content = extract_file_content(file_path, file_type)
+                db.add_documents(file_content)
+                # Prepare combined query if file exists
+                file_content = "\n\n".join(
+                    [chunk.page_content for chunk in file_content]
+                )
 
-    if st.button("Search"):
-        st.write("(Legal information retrieval logic goes here)")
+        with st.spinner("Thinking..."):
+            # Prepare context
+            inputs = {
+                "query": user_query,
+                "db": db,
+                "model": model,
+                "vectorstore_summary": "It includes all the trustable legal information available in Australia.",
+                "retrieved_docs": [],
+                "depth": 0,
+                "excluded_file_ids": set(),
+                "intent_type": "summarise" if uploaded_file else "qa",
+                "user_context": file_content if file_content else "",
+            }
+            try:
+                output = app.invoke(inputs)
+                response_data = output.get("response", "")
+                ai_message = (
+                    response_data["messages"][-1].content
+                    if isinstance(response_data, dict) and "messages" in response_data
+                    else (
+                        response_data.content
+                        if hasattr(response_data, "content")
+                        else str(response_data)
+                    )
+                )
+            except Exception as e:
+                ai_message = f"Error processing query: {str(e)}"
 
-elif tool_option == "Draft Document":
-    st.title("Draft Legal Documents")
-    st.write("### Generate legal documents effortlessly!")
-    
-    doc_type = st.selectbox("Select document type:", ["Contract", "Will", "Affidavit", "NDA"])
-    
-    if doc_type == "Contract":
-        contract_type = st.selectbox("Type of Contract:", ["Employment", "Service", "Partnership", "Sales", "Lease", "Other"])
-        parties_involved = st.text_input("Parties Involved (e.g., Company A & Company B)")
-        contract_duration = st.text_input("Contract Duration (e.g., 1 year, 6 months)")
-        payment_terms = st.text_area("Payment Terms")
-        obligations = st.text_area("Obligations of Parties")
-        termination_conditions = st.text_area("Termination Conditions")
-        additional_clauses = st.text_area("Additional Clauses")
-        
-    elif doc_type == "Will":
-        testator_name = st.text_input("Testator's Name")
-        beneficiaries = st.text_area("Beneficiaries and Their Allocations")
-        executor_name = st.text_input("Executor's Name")
-        special_instructions = st.text_area("Special Instructions")
-        
-    elif doc_type == "Affidavit":
-        affiant_name = st.text_input("Affiant's Name")
-        statement_details = st.text_area("Statement Details")
-        witnesses = st.text_area("Names of Witnesses")
-        
-    elif doc_type == "NDA":
-        disclosing_party = st.text_input("Disclosing Party")
-        receiving_party = st.text_input("Receiving Party")
-        confidentiality_period = st.text_input("Confidentiality Period (e.g., 2 years)")
-        exclusions = st.text_area("Exclusions from Confidentiality")
-        governing_law = st.text_input("Governing Law")
-        contract_type = st.selectbox("Type of Contract:", ["Employment", "Service", "Partnership", "Sales", "Lease", "Other"])
-        parties_involved = st.text_input("Parties Involved (e.g., Company A & Company B)")
-        contract_duration = st.text_input("Contract Duration (e.g., 1 year, 6 months)")
-        payment_terms = st.text_area("Payment Terms")
-        obligations = st.text_area("Obligations of Parties")
-        termination_conditions = st.text_area("Termination Conditions")
-        additional_clauses = st.text_area("Additional Clauses")
-        
-    client_name = st.text_input("Client Name")
-    additional_info = st.text_area("Additional Information", height=150)
-    
-    if st.button("Generate Document"):
-        draft_text = f"Legal Document: {doc_type}\nClient: {client_name}\nDetails: {additional_info}"
-        st.text_area("Generated Document:", draft_text, height=400)
-        st.download_button("Download Document", draft_text, file_name=f"{doc_type}_draft.txt")
+        # Add AI message to conversation and display it
+        current_conversation.append({"role": "ai", "content": ai_message})
+        st.chat_message("ai").write(ai_message)
+        # Clear uploaded file data after processing the question
+        st.session_state["uploaded_file_path"] = None
+        st.session_state["uploaded_file_type"] = None
 
-elif tool_option == "File Upload":
-    st.title("Upload Document")
-    st.write("### Drag and drop your file or click to select one.")
-    
-    # File uploader supports drag and drop by default
-    uploaded_file = st.file_uploader(
-        "Upload your file:",
-        type=["pdf", "doc", "docx", "txt"],
-        accept_multiple_files=False
-    )
-    
-    if uploaded_file:
-        st.write("**File Details:**")
-        st.write("File name:", uploaded_file.name)
-        st.write("File type:", uploaded_file.type)
-        st.write("File size:", uploaded_file.size)
-        
-        # Example: Display text file contents (if applicable)
-        if uploaded_file.type == "text/plain":
-            file_content = uploaded_file.read().decode("utf-8")
-            st.text_area("File Content", file_content, height=400)
-        else:
-            st.info("Preview not available for this file type.")
+        # Optionally, reset file uploader widget by incrementing the key
+        current_key = st.session_state.file_uploader_key
+        st.session_state.file_uploader_key = (
+            f"file_uploader_{int(current_key.split('_')[-1]) + 1}"
+        )
+        # Generate file if user wants a file
+        if user_wants_file(user_query):
+            file_buffer, file_name = generate_docx(ai_message)
+            st.download_button(
+                label="📄 Download Generated Document",
+                data=file_buffer,
+                file_name=file_name,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )

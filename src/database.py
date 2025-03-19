@@ -4,17 +4,20 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import (
     SemanticSplitterNodeParser,
 )
+from llama_index.core import schema
 from llama_index.embeddings.openai import OpenAIEmbedding
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain_postgres.vectorstores import PGVector
+from langchain_text_splitters.markdown import MarkdownTextSplitter
+import tiktoken
 import sqlalchemy
 import enum
 import pickle
 import getpass
 import os
 
-from ranker import ReRanker
+from src.ranker import ReRanker
 
 if not os.environ.get("OPENAI_API_KEY"):
     os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
@@ -92,7 +95,7 @@ class VectorDB:
     def __init__(self):
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
         self.connection = "postgresql+psycopg://langchain:langchain@localhost:6024/langchain"  # Uses psycopg3!
-        self.collection_name = "my_docs"
+        self.collection_name = "australian_case_laws"
         self.vector_store = PGVector(
             embeddings=self.embeddings,
             collection_name=self.collection_name,
@@ -105,37 +108,54 @@ class VectorDB:
         hnsw = HNSWIndexing(self.vector_store.session_maker)
         hnsw.create_hnsw_index()
 
-    def add_documents(self, documents):
-        self.vector_store.add_documents(
-            documents, ids=[doc.metadata["id"] for doc in documents]
-        )
+    def add_documents(self, documents, ignore_document_by_similarity_threshold=0.8):
+        docs_to_add = []
+        for doc in documents:
+            # Search for similar documents in the store
+            # similar_docs = self.similarity_search(
+            #     doc.page_content, top_k=1, initial_k=1
+            # )
+
+            # score = similar_docs[0][1]
+
+            # if score >= ignore_document_by_similarity_threshold:
+            #     print(
+            #         f"Document with id {doc.metadata['id']} already present. Skipping."
+            #     )
+            #     continue
+
+            docs_to_add.append(doc)
+
+        if docs_to_add:
+            self.vector_store.add_documents(
+                docs_to_add, ids=[doc.metadata["id"] for doc in docs_to_add]
+            )
 
     def similarity_search(self, query, top_k=3, initial_k=10):
         docs = self.vector_store.similarity_search(query, k=initial_k)
         reranked_docs = self.reranker.rerank(query, docs, top_k=top_k)
-        reranked_docs = [doc[0] for doc in reranked_docs]
         return reranked_docs
 
 class ExtractDocs:
     def __init__(self):
         self.documents = None
+        self.embedding_model = OpenAIEmbedding(model="text-embedding-3-small")
 
-    def extract(self, file_path):
+    def extract_document(self, file_path, document_type="pdf"):
+        self.document_type = document_type
         # set up parser
-        parser = LlamaParse(
-            result_type="markdown"  # "markdown" and "text" are available
-        )
+        parser = LlamaParse(result_type="text")  # "markdown" and "text" are available
 
         # use SimpleDirectoryReader to parse our file
-        file_extractor = {".pdf": parser}
+        file_extractor = {f".{self.document_type}": parser}
         self.documents = SimpleDirectoryReader(
             input_files=[file_path], file_extractor=file_extractor
         ).load_data()
 
-        embed_model = OpenAIEmbedding(model="text-embedding-3-small")
-
         splitter = SemanticSplitterNodeParser(
-            buffer_size=1, breakpoint_percentile_threshold=95, embed_model=embed_model
+            buffer_size=1,
+            breakpoint_percentile_threshold=95,
+            embed_model=self.embedding_model,
         )
 
         nodes = splitter.get_nodes_from_documents(self.documents)
@@ -144,6 +164,27 @@ class ExtractDocs:
         for doc in nodes:
             docs.append(Document(page_content=doc.text, metadata={"id": doc.id_}))
         return docs
+
+    def extract_text(self, documents, metadata=None):
+        md_splitter = MarkdownTextSplitter()
+        documents = md_splitter.create_documents(texts=documents, metadatas=metadata)
+        chunks = md_splitter.split_documents(documents)
+        return chunks
+        # docs = list()
+        # for doc in documents:
+        #     docs.append(schema.Document(text=doc))
+
+        # documents = docs
+        # splitter = SemanticSplitterNodeParser(
+        #     buffer_size=1,
+        #     breakpoint_percentile_threshold=95,
+        #     embed_model=self.embedding_model,
+        # )
+        # nodes = splitter.get_nodes_from_documents(documents)
+        # docs = list()
+        # for doc in nodes:
+        #     docs.append(Document(page_content=doc.text, metadata={"id": doc.id_}))
+        # return docs
 
     def save(self):
         # Assuming 'docs' is the variable containing the documents you want to save
@@ -159,7 +200,9 @@ class ExtractDocs:
 
 if __name__ == "__main__":
     # Load the documents
-    docs = ExtractDocs().extract("data/Constitution_of_the_Republic_of_Singapore.pdf")
+    docs = ExtractDocs().extract_document(
+        "data/Constitution_of_the_Republic_of_Singapore.pdf"
+    )
     # Save the documents
     db = VectorDB()
     db.add_documents(docs)

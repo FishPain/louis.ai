@@ -5,9 +5,9 @@ from src.constant import Routing
 
 class ComplexityRank(BaseModel):
     complexity: Literal[
-        Routing.COMPLEXITY_LOW, Routing.COMPLEXITY_MEDIUM, Routing.COMPLEXITY_HIGH, Routing.COMPLEXITY_UNRELATED
+        Routing.COMPLEXITY_LOW, Routing.COMPLEXITY_MEDIUM, Routing.COMPLEXITY_UNRELATED
     ] = Field(
-        description="Rank the complexity of the query as LOW, MEDIUM, or HIGH based on the available knowledge in the vectorstore."
+        description="Rank the complexity of the query as LOW, MEDIUM, or UNRELATED based on the available knowledge in the vectorstore."
     )
 
 
@@ -28,7 +28,9 @@ class HallucinationGrader(BaseModel):
 
 
 class QualityGrader(BaseModel):
-    relevance: bool = Field(description="Whether the response is relevant to the query.")
+    relevance: bool = Field(
+        description="Whether the response is relevant to the query."
+    )
     coherence: bool = Field(description="Whether the response is coherent.")
     completeness: bool = Field(description="Whether the response is complete.")
     reason: str = Field(description="Brief explanation of the quality assessment.")
@@ -39,3 +41,8 @@ class ComplianceGrader(BaseModel):
         description="Whether the response is compliant with the query."
     )
     reason: str = Field(description="Brief explanation of the compliance assessment.")
+
+
+class IntentIdentification(BaseModel):
+    intent_type: str = Field(description="What type of intent is it.")
+    intent: str = Field(description="The intent itself.")

@@ -6,15 +6,20 @@ langchain-openai
 langchain_postgres
 langsmith
 langgraph
+duckduckgo-search
 
 # Lamma Cloud
 llama-index-core
 llama-parse
 llama-index-readers-file
+llama-index-embeddings-openai
 
 # huggingface
+transformers
+torch
 datasets
 
 # Others
 python-dotenv
 streamlit
+python-docx
