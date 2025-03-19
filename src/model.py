@@ -6,13 +6,13 @@ from src.nodes.grader import (
     grade_compliance_node,
     grade_hallucination_node,
     grade_quality_node,
-    intent_identification_node
+    intent_identification_node,
+    verify_hallucination_node,
 )
 from src.nodes.summarise import summarise_document_node
 from src.nodes.scoring import complexity_scoring_node
 from src.nodes.retrieval import create_retrieval_prompt_node
 from src.nodes.search import (
-    web_search_node,
     recursive_vectorstore_node,
     response_constructor_node,
 )
@@ -23,13 +23,14 @@ class GraphState(TypedDict):
     """
     Represents the state of our graph.
     """
+
     query: str
     db: object
     model: object
     complexity: str
     intent: str
     intent_type: str
-    vectorstore_summary : str
+    vectorstore_summary: str
     retrieved_docs: List[str]
     user_context: str
     system_context: str
@@ -49,7 +50,6 @@ def handle_unrelated_content(state):
         content="The query appears to be out of scope for this system."
     )
     return state
-
 
 def build_graph():
     """
@@ -80,6 +80,7 @@ def build_graph():
     # workflow.add_node("web_search", web_search_node)
 
     workflow.add_node("grader_hallucination", grade_hallucination_node)
+    workflow.add_node("verify_hallucination", verify_hallucination_node)
     workflow.add_node("grader_quality", grade_quality_node)
     workflow.add_node("grader_compliance", grade_compliance_node)
 
@@ -117,7 +118,15 @@ def build_graph():
         lambda state: state["hallucination"],
         {
             False: "grader_quality",
-            True: "retrieval_prompt",
+            True: "verify_hallucination",
+        },
+    )
+    workflow.add_conditional_edges(
+        "verify_hallucination",
+        lambda state: state["hallucination"],
+        {
+            False: "retrieval_prompt",
+            True: "verify_hallucination",
         },
     )
     # 11. is there biasness (go back to 2 if yes)
@@ -126,7 +135,7 @@ def build_graph():
         lambda state: state["quality"],
         {
             True: "grader_compliance",
-            False: "retrieval_prompt",
+            False: "intent_identification",
         },
     )
     # 12. is my answer relevant to my question (go back to 4 if no)
@@ -135,7 +144,7 @@ def build_graph():
         lambda state: state["compliance"],
         {
             True: END,
-            False: "retrieval_prompt",
+            False: "complexity_ranking",
         },
     )
 

@@ -168,7 +168,7 @@ if tool_option == "Legal Assistant Chatbot":
                 "query": combined_query,
                 "db": db,
                 "model": model,
-                "vectorstore_summary": "It includes all the trustable legal information available in Singapore.",
+                "vectorstore_summary": "It includes all the trustable legal information available in Australia.",
                 "retrieved_docs": [],
                 "depth": 0,
                 "excluded_file_ids": set(),

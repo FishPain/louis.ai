@@ -5,6 +5,8 @@ from src.templates import (
     IntentIdentification,
 )
 from langchain.schema import HumanMessage
+from langchain_community.tools import DuckDuckGoSearchRun
+import time
 
 
 def intent_identification_node(state):
@@ -115,6 +117,101 @@ Determine whether the provided **Statement** contains any fabricated, unverified
     return state
 
 
+def verify_hallucination_node(state):
+    """
+    Verifies if the AI response contains hallucinations by checking citations
+    against the retrieved document metadata and (optionally) web search results.
+    """
+    model = state["model"]
+    query = state["query"]
+    intent = state["intent"]
+    response = state["response"].content
+    user_context = state.get("user_context", None)
+    system_context = state.get("system_context", None)
+    retrieved_docs = state["retrieved_docs"]  # List of Document objects
+
+    # Extract metadata from retrieved docs
+    metadata_list = [doc.metadata for doc in retrieved_docs]
+    search = DuckDuckGoSearchRun()
+
+    # Collect additional context via web search or URL validation (online context)
+    online_context = ""
+    # for doc in metadata_list:
+    #     url = doc.get("url")
+    #     if url:
+    #         search_response = str(search.invoke(url))
+    #         online_context += f"\n\n[Data from {url}]:\n{search_response}"
+    # Create the task prompt
+    prompt = f"""
+You are a **legal AI fact checker and citation validator**.  
+Your task is to **evaluate the factual accuracy and citation integrity** of an AI-generated legal response.
+
+---
+
+### ✅ Sources You Can Use for Fact Checking
+1. **Retrieved Legal Context from Vector Store**:  
+{system_context if system_context else 'None'}
+
+2. **User Uploaded Context**:  
+{user_context if user_context else 'None'}
+
+3. **Retrieved Document Metadata** (includes source titles, jurisdictions, sections, URLs):  
+{metadata_list}
+
+4. **Online Context (Search Results / URL Validation)**:  
+{online_context if online_context else 'None'}
+
+---
+
+### ✅ Objective
+Determine whether the **AI Response** contains any:  
+- Fabricated, unverifiable, or inaccurate legal information  
+- Incorrect citations, references, or URLs  
+- Misleading or incomplete claims not supported by the provided sources
+
+---
+
+### ✅ AI Response to Check
+{response}
+
+---
+
+### User Query
+{query}
+
+---
+
+### ✅ Task Instructions
+1. **Fact-Check the Entire AI Response**:  
+   - Verify each claim using the sources provided above.  
+   - Cross-check all citations and URLs to confirm they exist and match the provided sources.
+
+2. **Be Strict**:  
+   - If **any claim or citation is unsupported**, unverifiable, or incorrect based on the provided information, label the response as hallucinated.  
+   - Do **not** use external or personal knowledge beyond what is provided.
+
+3. **Use Search as Needed**:  
+   - If you can't confirm something in the retrieved context or metadata, rely on the **Online Context** you collected earlier.  
+   - If it’s still unclear, assume hallucination.
+
+---
+
+### ✅ Expected Output Format (Strict JSON)
+Respond **only** with the following JSON structure:  
+```json
+{{
+  "hallucination": true | false,
+  "reason": "Brief explanation (one sentence)."
+}}
+
+"""
+    structured_output_parser = model.with_structured_output(HallucinationGrader)
+    decision_response = structured_output_parser.invoke([HumanMessage(content=prompt)])
+    state["hallucination"] = decision_response.hallucination
+    state["hallucination_reason"] = decision_response.reason
+    return state
+
+
 def grade_quality_node(state):
     """
     Determines if the response meets a certain 'quality' threshold.
@@ -186,51 +283,54 @@ def grade_quality_node(state):
 
 def grade_compliance_node(state):
     """
-    Checks if the response meets certain compliance criteria (e.g.,
-    no disallowed content, no policy violations).
-    We'll ask the model: "Is this text compliant? (YES/NO)"
-    Then set 'compliance' to True (YES) or False (NO).
+    Checks if the response meets ethical compliance criteria:
+    - Objectivity
+    - No discriminatory, racist, sexist, or offensive content
+    Sets 'compliance' to True (YES) or False (NO).
     """
-
     model = state["model"]
-    response = state["response"]
+    response = state[
+        "response"
+    ].content  # assuming response is a HumanMessage or LLM output
 
+    # Compliance Check Prompt
     check_prompt = f"""
+You are an **AI content compliance auditor**.  
+Your role is to **evaluate the AI-generated response** and determine whether it complies with **ethical and policy guidelines**.
 
-    **Role:**  
-    You are an **expert AI legal compliance evaluator** specializing in **Singaporean law**. 
-    Your objective is to determine whether a given AI-generated legal response is **legally valid within Singapore’s legal framework**.
-    You must assess the response in relation to **Singapore’s Constitution, statutory laws, case precedents, and relevant regulations** to ensure **legal compliance**.
+---
 
-    ---
+### ✅ Objective
+Assess whether the response:
+- Is **objective and neutral**, free from personal opinions or judgments.
+- Does **not** contain **biased, discriminatory, racist, sexist, or offensive content**.
+- Respects **diversity**, **equality**, and **inclusivity**.
+- Does **not** make assumptions or promote stereotypes about any **race**, **gender**, **ethnicity**, **religion**, or **group**.
 
-    ### **Task Instructions**
-    1. **Analyze the Given Legal Response:**
-    - Ensure that the response **aligns with Singaporean laws, regulations, and case precedents**.
-    - Verify if the response is **factually and legally correct** under **Singapore’s legal framework**.
-    - Cross-check the response with **the given context** to determine its applicability.
-    - Identify any **misleading, outdated, or jurisdictionally incorrect statements**.
+---
 
-    2. **Determine Singaporean Legal Validity:**
-    - If the response is **fully compliant** with Singaporean law and aligns with the context, return:  
-        **"valid": "YES"** (Fully compliant).  
-    - If the response **contains legally invalid, misleading, or non-Singaporean legal principles**, or does not align with the context, return:  
-        **"valid": "NO"** (Not compliant).
+### ✅ Task Instructions
+1. **Analyze the Response for Compliance:**
+   - Look for any content that could be considered **racist**, **sexist**, **discriminatory**, or **harmful**.
+   - Check whether the tone is **objective**, **respectful**, and **professional**.
+   - Ensure the response avoids **biased language**, **prejudice**, or **subjective opinions**.
 
-    3. **Provide a Reason:**
-    - If **valid = "NO"**, briefly explain the legal issue (e.g., misalignment with Singaporean law, incorrect legal principle, outdated information).  
-    - If **valid = "YES"**, confirm that the response follows Singaporean law.
+2. **Determine Compliance:**
+   - If the response is **fully compliant**, objective, and respectful, return:  
+     `"compliant": true`  
+   - If the response **contains bias, discrimination, or offensive content**, return:  
+     `"compliant": false`
 
-    4. **Output Format:**
-        - **Return the output in an easily parsable format:** 
-        "valid": "YES" | "NO", "reason": "Brief explanation of legal compliance or non-compliance."
-        - **Ensure the reason is concise** (one sentence is sufficient).
-    ---
+3. **Provide a Reason:**
+   - If **compliant = false**, briefly explain why (e.g., "contains gender bias", "uses inappropriate language").
+   - If **compliant = true**, confirm that the response is neutral and free of bias.
 
-    ### Inputs
+---
 
-    AI Generated Response:
-    {response}
+### ✅ Input:  
+AI-Generated Response:
+```plaintext
+{response}
 
     ---
 

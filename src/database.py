@@ -136,15 +136,6 @@ class VectorDB:
         reranked_docs = self.reranker.rerank(query, docs, top_k=top_k)
         return reranked_docs
 
-    def truncate_text_by_tokens(
-        self, text, max_tokens=512, model_name="text-embedding-3-small"
-    ):
-        tokenizer = tiktoken.encoding_for_model(model_name)
-        tokens = tokenizer.encode(text)
-        truncated_tokens = tokens[:max_tokens]
-        return tokenizer.decode(truncated_tokens)
-
-
 class ExtractDocs:
     def __init__(self):
         self.documents = None

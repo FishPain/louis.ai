@@ -6,6 +6,7 @@ langchain-openai
 langchain_postgres
 langsmith
 langgraph
+duckduckgo-search
 
 # Lamma Cloud
 llama-index-core

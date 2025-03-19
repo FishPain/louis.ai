@@ -8,21 +8,6 @@ from src.nodes.retrieval import (
 )
 
 
-def web_search_node(state):
-    """
-    Node: Handle external search using the Tavily API.
-    """
-    query = state["query"]
-    model = state["model"]
-    search = TavilySearchResults(max_results=3)
-    tools = [search]
-    query = state["query"]
-    agent_executor = create_react_agent(model, tools)
-    response = agent_executor.invoke({"messages": [HumanMessage(content=query)]})
-    state["response"] = response
-    return state
-
-
 def vectorstore_node(state):
     """
     Node: Retrieves relevant legal documents from the vectorstore and generates a response.
@@ -74,7 +59,7 @@ def response_constructor_node(state):
     intent = state["intent"]
 
     rag_prompt = f"""
-You are a **highly experienced legal expert specializing in Singaporean law**, with deep expertise in **contract drafting, legislative interpretation, case law analysis, and delivering precise legal guidance**.
+You are a **highly experienced legal expert specializing in law**, with deep expertise in **contract drafting, legislative interpretation, case law analysis, and delivering precise legal guidance**.
 
 Your task is to provide a **clear, well-reasoned legal response** to the user's query, using the retrieved legal context and any user-provided information. Your answer must be **accurate**, **concise**, and **professionally structured**, suitable for a legal report or client communication.
 
@@ -192,5 +177,7 @@ def recursive_vectorstore_node(state):
         )  # Retrieve missing information
         # Merge newly retrieved documents while avoiding duplicates
         state["retrieved_docs"].extend(additional_result["retrieved_docs"])
-
+        state["system_context"] = "\n\n".join(
+            [f"- {doc.page_content}" for doc in state["retrieved_docs"]]
+        )
     return state
