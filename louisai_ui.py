@@ -151,10 +151,9 @@ if tool_option == "Legal Assistant Chatbot":
         current_conversation.append({"role": "user", "content": user_query})
         st.chat_message("user").write(user_query)
 
-        combined_query = user_query
         file_path = st.session_state.get("uploaded_file_path", None)
         file_type = st.session_state.get("uploaded_file_type", None)
-
+        file_content = None
         if file_path and file_type:
             with st.spinner("Extracting File Content..."):
                 file_content = extract_file_content(file_path, file_type)
@@ -163,12 +162,11 @@ if tool_option == "Legal Assistant Chatbot":
                 file_content = "\n\n".join(
                     [chunk.page_content for chunk in file_content]
                 )
-                combined_query += "\n\nContext from uploaded file:\n" + file_content
 
         with st.spinner("Thinking..."):
             # Prepare context
             inputs = {
-                "query": combined_query,
+                "query": user_query,
                 "db": db,
                 "model": model,
                 "vectorstore_summary": "It includes all the trustable legal information available in Australia.",
@@ -176,6 +174,7 @@ if tool_option == "Legal Assistant Chatbot":
                 "depth": 0,
                 "excluded_file_ids": set(),
                 "intent_type": "summarise" if uploaded_file else "qa",
+                "user_context": file_content if file_content else "",
             }
             try:
                 output = app.invoke(inputs)
@@ -195,7 +194,15 @@ if tool_option == "Legal Assistant Chatbot":
         # Add AI message to conversation and display it
         current_conversation.append({"role": "ai", "content": ai_message})
         st.chat_message("ai").write(ai_message)
+        # Clear uploaded file data after processing the question
+        st.session_state["uploaded_file_path"] = None
+        st.session_state["uploaded_file_type"] = None
 
+        # Optionally, reset file uploader widget by incrementing the key
+        current_key = st.session_state.file_uploader_key
+        st.session_state.file_uploader_key = (
+            f"file_uploader_{int(current_key.split('_')[-1]) + 1}"
+        )
         # Generate file if user wants a file
         if user_wants_file(user_query):
             file_buffer, file_name = generate_docx(ai_message)

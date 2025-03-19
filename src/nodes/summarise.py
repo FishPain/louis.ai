@@ -3,7 +3,7 @@ from langchain.schema import HumanMessage
 
 def summarise_document_node(state):
     model = state["model"]
-    user_context = state["user_context"]
+    user_context = state.get("user_context", None)
     intent = state["intent"]
 
     prompt = f"""
@@ -33,7 +33,7 @@ def summarise_document_node(state):
     """
 
     # Call the model to generate the summary
-    summarised_output = model.invoke(HumanMessage(content=prompt))
+    summarised_output = model.invoke([HumanMessage(content=prompt)])
 
     # Update the state with the summary
     state["user_context"] = summarised_output.content
