@@ -13,6 +13,7 @@ import re
 import os
 import tempfile
 
+
 # ---------- Setup Resources ----------
 @st.cache_resource
 def initialize_resources():
@@ -66,12 +67,12 @@ def save_file_locally(file):
 def extract_file_content(file_path, file_type):
     # Pass the file path to ExtractDocs instead of the file object
     if file_type == "application/pdf":
-        return ExtractDocs("pdf").extract_document(file_path)
+        return ExtractDocs().extract_document(file_path, "pdf")
     elif file_type in [
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]:
-        return ExtractDocs("docx").extract_document(file_path)
+        return ExtractDocs().extract_document(file_path, "docx")
     elif file_type == "text/plain":
         # For text files, you can return raw content instead of calling ExtractDocs
         with open(file_path, "r", encoding="utf-8") as f:
@@ -159,7 +160,9 @@ if tool_option == "Legal Assistant Chatbot":
                 file_content = extract_file_content(file_path, file_type)
                 db.add_documents(file_content)
                 # Prepare combined query if file exists
-                file_content = "\n\n".join([chunk.page_content for chunk in file_content])
+                file_content = "\n\n".join(
+                    [chunk.page_content for chunk in file_content]
+                )
                 combined_query += "\n\nContext from uploaded file:\n" + file_content
 
         with st.spinner("Thinking..."):
@@ -172,6 +175,7 @@ if tool_option == "Legal Assistant Chatbot":
                 "retrieved_docs": [],
                 "depth": 0,
                 "excluded_file_ids": set(),
+                "intent_type": "summarise" if uploaded_file else "qa",
             }
             try:
                 output = app.invoke(inputs)

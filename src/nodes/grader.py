@@ -43,7 +43,6 @@ def intent_identification_node(state):
     decision_response = structured_output_parser.invoke([HumanMessage(content=prompt)])
 
     # Assuming decision_response matches your intent_identification_template structure
-    state["intent_type"] = decision_response.intent_type
     state["intent"] = decision_response.intent
 
     return state
