@@ -44,5 +44,5 @@ class ComplianceGrader(BaseModel):
 
 
 class IntentIdentification(BaseModel):
-    intent_type: str
-    intent: str
+    intent_type: str = Field(description="What type of intent is it.")
+    intent: str = Field(description="The intent itself.")

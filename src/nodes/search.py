@@ -60,7 +60,7 @@ def vectorstore_node(state):
         return state
 
     state["retrieved_docs"] = retrieved_docs
-    state["context"] = "\n\n".join(
+    state["system_context"] = "\n\n".join(
         [f"- {doc.page_content}" for doc in state["retrieved_docs"]]
     )
     return state

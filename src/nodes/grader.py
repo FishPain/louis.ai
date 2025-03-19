@@ -15,19 +15,18 @@ def intent_identification_node(state):
     You are a helpful and precise legal AI assistant. Your task is to identify the intent behind a user's query. Think carefully and follow these instructions step by step:
 
     1. Analyze the query from a legal assistant's point of view.
-    2. Determine the **intent** of the user's query. Possible intents include (but are not limited to): 
-    - "qa" (the user is asking a question and expects an answer)
-    - "summarise" (the user wants to summarize a document or text)
-    - "search" (the user is asking you to find information)
-    - "chat" (the user is making small talk or general conversation)
+    2. Choose **one** intent type that best describes the user's query. Possible intents are:  
+    - "qa" (the user is asking a legal question and expects an answer)  
+    - "summarise" (the user wants to summarize a document or text)  
     3. If the user is asking about a document or mentions handling a document (e.g., uploading, summarizing, or reviewing it), you must include "summarise" in the **intent_type** list.
     4. Think carefully about multiple intents. For example, if the user wants to summarize a document and ask a question about it, include both "summarise" and "qa".
     5. Provide a brief explanation of the **intent** in plain language.
 
-    ⚠️ IMPORTANT: Respond only with a valid JSON object in the following format:
+    ⚠️ IMPORTANT: Return valid JSON ONLY in the following format:  
+    ```json
     {{
-        "intent_type": "summarise", "qa"
-        "intent": "The user wants to summarize the document and then ask a question about its content."  // A clear, short explanation
+        "intent_type": "summarise"/"qa"
+        "intent": "The user wants to summarize the document."
     }}
 
     Here is the user's query:
@@ -38,7 +37,6 @@ def intent_identification_node(state):
 
     # Assuming you have a pydantic schema called intent_identification_template
     structured_output_parser = model.with_structured_output(IntentIdentification)
-
     # Send the prompt as a HumanMessage (like a user message)
     decision_response = structured_output_parser.invoke([HumanMessage(content=prompt)])
 
@@ -57,8 +55,8 @@ def grade_hallucination_node(state):
     """
     model = state["model"]
     response = state["response"].content
-    user_context = state["user_context"]
-    system_context = state["system_context"]
+    user_context = state.get("user_context", None)
+    system_context = state.get("system_context", None)
 
     check_prompt = f"""
 You are an **expert AI fact checker with legal domain expertise**, specializing in detecting hallucinated, fabricated, or inaccurate information in legal advice and documents.

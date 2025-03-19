@@ -95,7 +95,7 @@ Based on the above instructions, rewrite the user's query as an **optimized retr
 def check_completeness_with_llm(state):
     model, query = state["model"], state["query"]
     user_context = state.get("user_context", None)
-    system_context = state["system_context"]
+    system_context = state.get("system_context", None)
     """
     Uses the LLM to determine whether the retrieved legal context is sufficient 
     or if additional retrieval is necessary.
@@ -109,13 +109,9 @@ Your evaluation must be **thorough, precise, and strict**. Assume that any missi
 
 ### ✅ **User Query**  
 {query}
-
-{f"### ✅ **User Uploaded Context**\n{user_context}" if user_context else ""}
-
-### ✅ **Retrieved Legal Context**  
-{system_context}
-
 ---
+{f"### ✅ **User Uploaded Context**\n{user_context}\n---" if user_context else ""}
+{f"### ✅ **Retrieved Legal Context**  \n{system_context}\n---" if system_context else ""}
 
 ### ✅ **Your Task**
 

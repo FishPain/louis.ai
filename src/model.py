@@ -91,7 +91,7 @@ def build_graph():
     # 3. summarise the document if document is longer than x and add to user_context in query
     workflow.add_conditional_edges(
         "intent_identification",
-        lambda state: state["intent"],
+        lambda state: state["intent_type"],
         {"summarise": "summarise_document", "qa": "complexity_ranking"},
     )
     workflow.add_edge("summarise_document", "complexity_ranking")
