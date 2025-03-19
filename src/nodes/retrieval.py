@@ -9,6 +9,8 @@ def create_retrieval_prompt_node(state):
 
     query = state["query"]
     model = state["model"]
+    intent = state["intent"]
+    user_context = state.get("user_context", None)
     hallucination = state.get("hallucination", False)
     hallucination_reason = state.get("hallucination_reason", "")
     quality = state.get("quality", False)
@@ -16,45 +18,74 @@ def create_retrieval_prompt_node(state):
     compliance = state.get("compliance", False)
     compliance_reason = state.get("compliance_reason", "")
 
-    # Construct an optimized retrieval prompt
     prompt = f"""
-	You are an expert in **optimizing legal queries for similarity-based vector retrieval**. Your task is to **rewrite the user query** into a **concise, search-optimized prompt** to improve the relevance and accuracy of retrieved documents from a legal vector database.
+You are a **legal AI assistant** specializing in **optimizing legal queries for similarity-based vector retrieval** from a legal knowledge base.
 
-	---
+---
 
-	### ✅ **Guidelines for Optimizing the Retrieval Prompt**
-	1. **Extract Key Legal Concepts**: Focus on critical legal terms, case names, jurisdictions, and regulations present in the query.
-	2. **Expand with Synonyms and Variations**: Include alternative phrasings or terminology to enhance vector similarity matching.
-	3. **Clarify and Disambiguate**: Remove vague language; ensure precision and legal accuracy.
-	4. **Add Relevant Legal Context**: Mention applicable jurisdictions, laws, or precedents if relevant or implied.
-	5. **Avoid Hallucination**: If you are not sure, simply state that you are not sure. Do not introduce information that isn't present or implied by the original query.
-	{f"6. **Special Note**: {hallucination_reason}" if hallucination else ""}
-    {f"6. **Special Note**: {quality_reason}" if quality else ""}
-	{f"6. **Special Note**: {compliance_reason}" if compliance else ""}
-	Lastly. **Format for Embedding Optimization**: Make the prompt concise, rich in keywords, and structured to maximize cosine similarity scores.
+### ✅ **Objective**
+Rewrite the user query into a **concise, keyword-rich prompt**, designed to **maximize relevance** in vector similarity search. The goal is to retrieve the **most accurate and relevant legal documents** related to the query.
 
-	---
+---
 
-	### ✅ **Example Transformations**
-	**User Query:**  
-	"What are the rights of employees in Singapore regarding wrongful dismissal?"
+### ✅ **Instructions**
+Follow these steps carefully when optimizing the retrieval prompt:
 
-	**Optimized Retrieval Prompts:**  
-	- "Singapore employment law: wrongful dismissal rights, legal protections, case precedents."  
-	- "Retrieve statutes, case law, and regulations on employee termination and wrongful dismissal in Singapore."
+1. **Extract Key Legal Concepts**  
+   - Identify and prioritize critical legal terms, statutes, jurisdictions, case law references, and legal processes mentioned or implied in the query.
+   
+2. **Clarify Jurisdictions and Legal Domains**  
+   - If jurisdiction (e.g., Singapore law) is known or implied, explicitly mention it in the optimized prompt.
 
-	---
+3. **Expand with Synonyms and Legal Variations**  
+   - Include common variations, alternative legal phrases, or synonyms that improve matching in vector search.
 
-	### ✅ **Your Task**
-	Rewrite the following user query into a search-optimized prompt for vector retrieval.
+4. **Simplify and Disambiguate**  
+   - Remove vague, non-legal, or ambiguous language. Use **clear, specific legal terminology**.
 
-	**User Query:**  
-	{query}
+5. **Contextualize the Query**  
+   - Leverage any provided **User Uploaded Context** to improve precision (if relevant).
 
-	---
+6. **Avoid Hallucination**  
+   - Do **not** introduce information not present or clearly implied in the query or context.
+   {f"- ⚠️ Special Note: {hallucination_reason}" if hallucination else ""}
+   {f"- ⚠️ Special Note: {quality_reason}" if quality else ""}
+   {f"- ⚠️ Special Note: {compliance_reason}" if compliance else ""}
 
-	### ✅ **Optimized Retrieval Prompt:**  
-	"""
+7. **Format for Embedding Optimization**  
+   - Write a **concise, keyword-dense prompt**. Avoid long sentences. Focus on **key terms** separated by commas or structured phrases to boost cosine similarity scores.
+
+---
+
+### ✅ **Example Transformations**
+
+**User Query:**  
+"What are the rights of employees in Singapore regarding wrongful dismissal?"
+
+**Optimized Retrieval Prompts:**  
+- "Singapore employment law, wrongful dismissal, employee rights, case law precedents."  
+- "Legal protections, employee termination, wrongful dismissal claims, Singapore statutes and case law."
+
+---
+
+### ✅ **Provided Information**
+
+{f"**User Uploaded Context**:\n{user_context}\n\n" if user_context else ""}
+**User Intent:**  
+{intent}
+
+**Original User Query:**  
+{query}
+
+---
+
+### ✅ **Your Task**  
+Based on the above instructions, rewrite the user's query as an **optimized retrieval prompt** that will maximize relevance and accuracy during vector-based search.
+
+---
+
+### ✅ **Optimized Retrieval Prompt:**  
+"""
 
     response = model.invoke([HumanMessage(content=prompt)])
     state["response"] = response
@@ -63,39 +94,66 @@ def create_retrieval_prompt_node(state):
 
 def check_completeness_with_llm(state):
     model, query = state["model"], state["query"]
-    context = "\n\n".join([f"- {doc.page_content}" for doc in state["retrieved_docs"]])
-
+    user_context = state.get("user_context", None)
+    system_context = state["system_context"]
     """
     Uses the LLM to determine whether the retrieved legal context is sufficient 
     or if additional retrieval is necessary.
     """
     completeness_prompt = f"""
-    You are a **highly skilled legal AI assistant** responsible for ensuring that retrieved legal documents
-    contain all necessary information to answer the query **completely and accurately**.
-    
-    ---
-    ### **User Query**
-    {query}
+You are a **highly skilled legal AI auditor**. Your role is to **critically assess the completeness and sufficiency** of the retrieved legal context for answering a user’s query.
 
-    ### **Retrieved Legal Context**
-    {context}
-    ---
+Your evaluation must be **thorough, precise, and strict**. Assume that any missing legal reference or incomplete citation could result in an inaccurate or incomplete legal response.
 
-    ## **Task Instructions**  
-    1. **Evaluate Completeness:**  
-       - Determine whether the retrieved legal context contains **all necessary legal references, case laws, statutes, and key explanations** needed to answer the user’s query.  
-       - If any referenced legal sections (e.g., "(2), (4)") or implicit legal concepts **are missing**, flag the response as incomplete.  
+---
 
-    2. **Identify Missing Information: (Focusing only on the Retrieved Legal Context)**  
-       - If the retrieved context references **other legal sections** (e.g., "(3)", "(4)"), these sections must be **explicitly retrieved** before considering the response complete.  
-       - If the retrieved documents **lack key legal principles**, suggest additional retrieval queries to obtain complete information.
+### ✅ **User Query**  
+{query}
 
-    ---
-    ## **Response Format**
-    - **is_sufficient**: `true` if task instruction 1 and 2 are *strictly met*, otherwise `false`.  
-    - **missing_queries**: A list of additional legal terms or key references that should be retrieved if `is_sufficient` is `false`.  
-    """
+{f"### ✅ **User Uploaded Context**\n{user_context}" if user_context else ""}
 
+### ✅ **Retrieved Legal Context**  
+{system_context}
+
+---
+
+### ✅ **Your Task**
+
+1. **Evaluate Completeness**  
+   - Determine if the retrieved legal context provides **all necessary legal references**, including statutes, case law, sections, sub-sections, and definitions, to answer the query **fully and accurately**.  
+   - **Strictly verify** that all referenced materials in the retrieved context are **fully present and explained**.  
+     - Example: If the retrieved context mentions "Section 14(2)" but does **not** include the content of Section 14(2), consider the retrieval **incomplete**.
+   - Confirm whether the context covers **all legal principles or doctrines** implied or necessary to answer the query.
+
+2. **Identify Missing Information**  
+   - List **specific legal terms, sections, cases, or topics** that need to be retrieved to complete the answer.  
+   - Base this only on **gaps found in the Retrieved Legal Context**, not general knowledge.
+
+---
+
+### ✅ **Evaluation Criteria**
+- **Sufficient** if:  
+  - All cited statutes, cases, sections, and key legal concepts are fully provided and explained in the retrieved context.  
+  - There is **no ambiguity** or **missing cross-references** needed to answer the query.
+
+- **Insufficient** if:  
+  - Any cited law, clause, section, or concept is referenced but **not fully included** in the retrieved context.  
+  - Key legal principles necessary to answer the query are **absent**.
+
+---
+
+### ✅ **Response Format (Strict JSON Only)**
+
+```json
+{{
+  "is_sufficient": true / false,
+  "missing_queries": [
+    "Section X details",
+    "Case law on [specific legal concept]",
+    "Statutory definition of [term]"
+  ]
+}}
+"""
     structured_output_parser = model.with_structured_output(ResponseSufficency)
     response = structured_output_parser.invoke(
         [HumanMessage(content=completeness_prompt)]

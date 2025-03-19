@@ -41,3 +41,8 @@ class ComplianceGrader(BaseModel):
         description="Whether the response is compliant with the query."
     )
     reason: str = Field(description="Brief explanation of the compliance assessment.")
+
+
+class IntentIdentification(BaseModel):
+    intent_type: str
+    intent: str

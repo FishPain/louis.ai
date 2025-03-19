@@ -54,48 +54,92 @@ def vectorstore_node(state):
 
     # Step 4: Check if retrieval was successful
     if not retrieved_docs:
-        state["response"] = "No relevant legal documents were found in the database."
+        state["response"] = HumanMessage(
+            content="No relevant legal documents were found in the database."
+        )
         return state
 
     state["retrieved_docs"] = retrieved_docs
+    state["context"] = "\n\n".join(
+        [f"- {doc.page_content}" for doc in state["retrieved_docs"]]
+    )
     return state
 
 
 def response_constructor_node(state):
     model = state["model"]
     query = state["query"]
-    retrieved_docs = state["retrieved_docs"]
+    user_context = state.get("user_context", None)
+    system_context = state.get("system_context", None)
+    intent = state["intent"]
 
-    context = "\n\n".join([f"- {doc.page_content}" for doc in retrieved_docs])
-
-    # Step 4: Construct an optimized RAG prompt
     rag_prompt = f"""
-    You are a **highly skilled legal expert specializing in Singaporean law**, with extensive experience in **contract drafting, 
-    legislative interpretation, case law analysis, and providing sound legal guidance**.
+You are a **highly experienced legal expert specializing in Singaporean law**, with deep expertise in **contract drafting, legislative interpretation, case law analysis, and delivering precise legal guidance**.
 
-    ### **Task Instructions**
-    1. **Analyze the Retrieved Legal Context**:
-       - Review the extracted legal references, statutes, or precedents provided below.
-       - Identify key points relevant to answering the query.
-    
-    2. **Provide a Well-Structured Legal Response**:
-       - **Cite specific legal clauses, cases, or acts** when possible.
-       - If the retrieved context is **incomplete**, provide a **reasoned legal interpretation** rather than making assumptions.
-       - Ensure the response is **clear, concise, and legally accurate**.
+Your task is to provide a **clear, well-reasoned legal response** to the user's query, using the retrieved legal context and any user-provided information. Your answer must be **accurate**, **concise**, and **professionally structured**, suitable for a legal report or client communication.
 
-    ---
-    ### **Retrieved Legal Context**
-    {context}
-    ---
+---
 
-    ### **User Query**
-    {query}
+### ✅ **Task Overview**
 
-    ---
-    ### **Your Answer (Format Your Response Properly)**
-    - **Legal Basis**: [Reference specific clauses or laws]
-    - **Explanation**: [Explain how the law applies]
-    - **Conclusion**: [Summarize the legal standing]
+1. **Review the Provided Contexts**:
+   - Carefully analyze the **Retrieved Legal Context** (from the knowledge base).
+   - Consider the **User Uploaded Context** (such as contracts, documents, or user notes).
+
+2. **Answer the User’s Query**:
+   - Address the query **directly** based on the provided contexts.
+   - Provide **legal reasoning**, referencing **specific statutes, clauses, or case law** whenever possible.
+   - If the information provided is **incomplete**, explain this clearly and offer a **reasoned interpretation** based on existing knowledge and legal principles.  
+   (⚠️ **Do not speculate or fabricate legal information**.)
+
+3. **Maintain Professional Standards**:
+   - Ensure the response is **legally accurate**, **logically sound**, and **clearly written**.
+   - Avoid unnecessary jargon; be clear and precise.
+   - Format the response in a **structured and professional** manner.
+
+---
+{
+    f"### ✅ **Retrieved Legal Context (Knowledge Base)**:\n{system_context}\n---" if system_context else ""
+}
+
+{
+    f"### ✅ **User Uploaded Context**:\n{user_context}\n---" if user_context else ""
+}
+
+### ✅ **User Query**:
+{query}
+
+---
+
+### ✅ **User Intent**:
+{intent}
+
+---
+
+### ✅ **Your Response Structure**:
+Provide a professional legal opinion in the following structure:
+
+**Legal Basis**:  
+- Cite relevant laws, acts, regulations, or case precedents that apply.  
+- E.g., "Under Section 14 of the Employment Act 1968 (Singapore)..."
+
+**Analysis**:  
+- Explain how the cited legal provisions apply to the user's specific situation.  
+- Offer clear reasoning and interpretations where necessary.
+
+**Conclusion**:  
+- Summarize the legal position or recommended action.  
+- Be concise and definitive where possible.
+
+---
+
+⚠️ **Important**:  
+- If key information is missing, **state the limitations** clearly.  
+- If additional documents or clarification are needed to provide a definitive answer, **recommend next steps**.
+
+---
+
+### ✅ **Begin your response below**:
     """
 
     # Step 5: Invoke the model

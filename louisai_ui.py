@@ -66,12 +66,12 @@ def save_file_locally(file):
 def extract_file_content(file_path, file_type):
     # Pass the file path to ExtractDocs instead of the file object
     if file_type == "application/pdf":
-        return ExtractDocs("pdf").extract(file_path)
+        return ExtractDocs("pdf").extract_document(file_path)
     elif file_type in [
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]:
-        return ExtractDocs("docx").extract(file_path)
+        return ExtractDocs("docx").extract_document(file_path)
     elif file_type == "text/plain":
         # For text files, you can return raw content instead of calling ExtractDocs
         with open(file_path, "r", encoding="utf-8") as f:

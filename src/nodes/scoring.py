@@ -10,79 +10,92 @@ from src.templates import ComplexityRank
 
 def complexity_scoring_node(state):
     """
-    Uses an LLM to rank the complexity of the query based on what is already known in the vector store.
+    Uses an LLM to rank the complexity of the query based on what is already known
+    in the vector store and any user-uploaded context.
     Returns 'LOW', 'MEDIUM', 'HIGH' complexity, or 'UNRELATED' if it's out of scope.
     """
     query = state["query"]
     model = state["model"]
+    user_context = state.get("user_context", None)
     vectorstore_summary = state["vectorstore_summary"]
+
     decision_prompt = f"""
-    You are an advanced AI legal reasoning system. Your role is to **evaluate the complexity of a legal query** and determine how well it can be answered, based on the knowledge in the vector store and the capabilities of your own reasoning.
+You are an advanced AI legal reasoning system. Your role is to **evaluate the complexity of a legal query** and determine how well it can be answered, based on:
+1. Your own general legal knowledge and reasoning.
+2. The information available in the **Vector Store Summary**.
+3. Any additional **User Uploaded Context**, such as documents or notes provided by the user.
 
-    ---
-    
-    ### ✅ **Your Task**
-	You will receive:
-	1. A **User Query** (a legal question).
-	2. A **Vector Store Summary** (describing what legal information the vector store contains).
+---
 
-	Your job is to **evaluate** whether the query:
-	- Can be answered directly by you (GPT) without needing the vector store.
-	- Requires additional information from the vector store.
-	- Is unrelated to the legal field entirely.
+### ✅ **Your Task**
+You will receive:
+1. A **User Query** (a legal question).
+2. A **Vector Store Summary** (describing what legal information the vector store contains).
+3. A **User Uploaded Context** (a document or additional details provided by the user).
 
-	---
+Your job is to **evaluate** whether the query:
+- Can be answered directly by you (GPT) using your own reasoning or the user-uploaded context.
+- Requires additional information from the vector store.
+- Is unrelated to the legal field entirely.
 
-	### ✅ **How to Rank Complexity**
-	Choose **one** complexity level based on the criteria below.
+---
 
-	#### ✅ {Routing.COMPLEXITY_LOW} (LOW)
-	- The query is **simple**, **direct**, and can be fully answered **by GPT itself**, using your own knowledge and reasoning.
-	- You **do not need** the vector store to answer it.
-	- Example: "What is the minimum annual leave entitlement under Singapore law?"  
-	➡️ This is a **fact-based question** that GPT can answer without extra help.
+### ✅ **How to Rank Complexity**
+Choose **one** complexity level based on the criteria below.
 
-	#### 🟧 {Routing.COMPLEXITY_MEDIUM} (MEDIUM)
-	- The query requires **additional information** that **GPT does not have**, and must retrieve from the **vector store**.
-	- Example situations:  
-	- The query requests **specific case law** or **legal precedents**, which are only found in the vector store.  
-	- The query relates to **custom legal interpretations** or **specialized documents** stored in the vector store.  
-	➡️ GPT cannot provide a **complete** answer without accessing the vector store.
+#### ✅ LOW Complexity (**{Routing.COMPLEXITY_LOW}**)
+- The query is **simple**, **direct**, and can be fully answered **by GPT itself** or **using the provided User Uploaded Context**, without needing the vector store.
+- Example: "What is the minimum annual leave entitlement under Singapore law?"  
+➡️ This is a **fact-based question** that GPT can answer without extra help.
 
-	#### 🚫 {Routing.COMPLEXITY_UNRELATED} (UNRELATED)
-	- The query is **completely unrelated** to the **field of law or legal practice**.
-	- Example:  
-	- Asking about **weather**, **technology**, or **medical** topics.  
-	- Requesting information about **Malaysia law** when the vector store only contains **Singapore law**.
+#### 🟧 MEDIUM Complexity (**{Routing.COMPLEXITY_MEDIUM}**)
+- The query requires **additional information** from the **vector store**, even after reviewing the **User Uploaded Context**.
+- Example:  
+  - The query requests **specific case law**, **legal precedents**, or **custom legal interpretations** not found in the user context.
+  - The uploaded context is **insufficient** to fully answer the query.
+➡️ GPT cannot provide a **complete** answer without accessing the vector store.
 
-	---
+#### 🚫 UNRELATED (**{Routing.COMPLEXITY_UNRELATED}**)
+- The query is **completely unrelated** to the **field of law or legal practice**.
+- Example:  
+  - Asking about **weather**, **technology**, or **medical** topics.  
+  - Requesting information about **Malaysia law**, when both the user context and vector store only cover **Singapore law**.
 
-	### ✅ **Clarifications**
-	- **Case Law Queries:**  
-	If the user asks for **case law** or **legal precedents**, and GPT does not have direct access to them, rank the complexity as **MEDIUM**, **not** LOW.  
-	➡️ Even if GPT can provide **general legal principles**, without specific cases it needs vector store support.
+---
 
-	- **Avoid UNRELATED unless it's truly out-of-scope:**  
-	➡️ Only use UNRELATED if the query is not about **law** or not covered by your **legal expertise** at all.
+### ✅ **Clarifications**
+- **Case Law Queries:**  
+  If the user asks for **case law** or **legal precedents**, and neither GPT nor the User Uploaded Context provides this information, rank it as **MEDIUM**.
+  
+- **Use User Uploaded Context First:**  
+  If the user's uploaded document provides enough information to answer the query completely, you may assign **LOW** complexity (even if the vector store isn’t needed).
 
-	---
+- **Avoid UNRELATED unless it's truly out-of-scope:**  
+  Only use UNRELATED if the query is not about **law** or **outside the provided knowledge areas**.
 
-	### ✅ **Vector Store Summary**
-	{vectorstore_summary}
+---
 
-	---
+### ✅ **Vector Store Summary**
+{vectorstore_summary}
 
-	### ✅ **User Query**
-	{query}
+---
 
-	---
+{
+    f"### ✅ **User Uploaded Context**\n{user_context}\n---" if user_context else ""
+}
 
-	### ✅ **Final Decision**
-	Choose **one** complexity ranking from the following list:  
-	**{Routing.COMPLEXITY_LOW} / {Routing.COMPLEXITY_MEDIUM} / {Routing.COMPLEXITY_UNRELATED}**
+### ✅ **User Query**
+{query}
 
-	Respond with the **selected complexity level only**.
-	"""
+---
+
+### ✅ **Final Decision**
+Choose **one** complexity ranking from the following list (no explanations):  
+**{Routing.COMPLEXITY_LOW} / {Routing.COMPLEXITY_MEDIUM} / {Routing.COMPLEXITY_UNRELATED}**
+
+Respond with the **selected complexity level only**.
+"""
+
     structured_output_parser = model.with_structured_output(ComplexityRank)
     decision_response = structured_output_parser.invoke(
         [HumanMessage(content=decision_prompt)]

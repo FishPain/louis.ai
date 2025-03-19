@@ -1,5 +1,52 @@
-from src.templates import HallucinationGrader, QualityGrader, ComplianceGrader
+from src.templates import (
+    HallucinationGrader,
+    QualityGrader,
+    ComplianceGrader,
+    IntentIdentification,
+)
 from langchain.schema import HumanMessage
+
+
+def intent_identification_node(state):
+    model = state["model"]
+    query = state["query"]
+
+    prompt = f"""
+    You are a helpful and precise legal AI assistant. Your task is to identify the intent behind a user's query. Think carefully and follow these instructions step by step:
+
+    1. Analyze the query from a legal assistant's point of view.
+    2. Determine the **intent** of the user's query. Possible intents include (but are not limited to): 
+    - "qa" (the user is asking a question and expects an answer)
+    - "summarise" (the user wants to summarize a document or text)
+    - "search" (the user is asking you to find information)
+    - "chat" (the user is making small talk or general conversation)
+    3. If the user is asking about a document or mentions handling a document (e.g., uploading, summarizing, or reviewing it), you must include "summarise" in the **intent_type** list.
+    4. Think carefully about multiple intents. For example, if the user wants to summarize a document and ask a question about it, include both "summarise" and "qa".
+    5. Provide a brief explanation of the **intent** in plain language.
+
+    ⚠️ IMPORTANT: Respond only with a valid JSON object in the following format:
+    {{
+        "intent_type": "summarise", "qa"
+        "intent": "The user wants to summarize the document and then ask a question about its content."  // A clear, short explanation
+    }}
+
+    Here is the user's query:
+    "{query}"
+
+    Respond with JSON only:
+    """
+
+    # Assuming you have a pydantic schema called intent_identification_template
+    structured_output_parser = model.with_structured_output(IntentIdentification)
+
+    # Send the prompt as a HumanMessage (like a user message)
+    decision_response = structured_output_parser.invoke([HumanMessage(content=prompt)])
+
+    # Assuming decision_response matches your intent_identification_template structure
+    state["intent_type"] = decision_response.intent_type
+    state["intent"] = decision_response.intent
+
+    return state
 
 
 def grade_hallucination_node(state):
@@ -9,45 +56,58 @@ def grade_hallucination_node(state):
     Then set 'hallucination' to True (YES) or False (NO).
     """
     model = state["model"]
-    response = state["response"]
+    response = state["response"].content
+    user_context = state["user_context"]
+    system_context = state["system_context"]
 
     check_prompt = f"""
-    **Role:**  
-    You are an **expert AI fact checker** specializing in verifying the accuracy of statements. Your objective is to detect fabricated, unverified, or misleading information (hallucinations) in the given text and provide a reason for your decision.
+You are an **expert AI fact checker with legal domain expertise**, specializing in detecting hallucinated, fabricated, or inaccurate information in legal advice and documents.
 
-    ---
+---
 
-    ### **Task Instructions**
-    1. **Analyze the Given Text:**
-        - Carefully examine the provided statement(s).
-        - Compare each claim to verifiable knowledge sources (e.g., structured databases, authoritative documents, or web search results).
+### ✅ **Objective**
+Determine whether the provided **Statement** contains any fabricated, unverified, or inaccurate legal information. Use only the **Retrieved Legal Context** and **User Uploaded Context** as your source of truth.
 
-    2. **Determine Factuality:**
-        - If all claims in the text are factually correct, based on known data, return:  
-            **"hallucination": "NO"** (No hallucinations detected).  
-        - If any claim contains a fabricated, unverified, or irrelevant statement, return:  
-            **"hallucination": "YES"** (Hallucinations detected).
+---
 
-    3. **Provide a Reason:**
-        - If **hallucination = "YES"**, briefly explain why the statement is inaccurate or unverifiable.
-        - If **hallucination = "NO"**, confirm that the statement aligns with verified knowledge.
+### ✅ **Source Context for Fact Checking**
+{f"**Retrieved Legal Context (Vector Store)**:\n{system_context}\n" if system_context else ""}
+{f"**User Uploaded Context**:\n{user_context}\n" if user_context else ""}
 
-    4. **Output Format:**
-        - **Return the output in an easily parsable format:** 
-        "hallucination": "YES" | "NO", "reason": "Brief explanation of factuality assessment."
-        - **Ensure the reason is concise** (one sentence is sufficient).
+---
 
-    ---
+### ✅ **Statement to Verify**
+{response}
 
-    ### **Statement**
-    {response}
+---
 
-    ---
+### ✅ **Fact-Checking Instructions**
 
-    ### **Output Format**
-    "hallucination": "True" | "False", "reason": "Brief explanation of factuality assessment."
-    """
+1. **Strict Verification**  
+   - Cross-check each claim in the Statement against the provided contexts.  
+   - Do **not** use external knowledge or make assumptions.  
+   - If a claim is not directly supported by the provided context, it must be considered **hallucinated or unverified**.
 
+2. **Determine Hallucination Status**  
+   - If **all** claims in the Statement are fully supported by the context, return:  
+     `"hallucination": false`  
+   - If **any** claim is unsupported, unverifiable, fabricated, or irrelevant based on the provided context, return:  
+     `"hallucination": true`
+
+3. **Provide a Clear Reason**  
+   - If hallucination is **true**, briefly explain **which part** of the Statement is inaccurate or unsupported, and why.  
+   - If hallucination is **false**, confirm the Statement is fully supported by the provided context.
+
+---
+
+### ✅ **Output Format (JSON)**
+
+```json
+{{
+  "hallucination": true | false,
+  "reason": "Brief explanation (one sentence)."
+}}
+"""
     structured_output_parser = model.with_structured_output(HallucinationGrader)
     decision_response = structured_output_parser.invoke(
         [HumanMessage(content=check_prompt)]
@@ -66,6 +126,7 @@ def grade_quality_node(state):
     """
     model = state["model"]
     query = state["query"]
+    intent = state["intent"]
     response = state["response"]
 
     check_prompt = f"""
@@ -90,6 +151,9 @@ def grade_quality_node(state):
     ### Inputs:
     User Query:
     {query}
+
+    User Intent:
+    {intent}
 
     Generated Output:
     {response}

@@ -16,6 +16,7 @@ llama-index-embeddings-openai
 # huggingface
 transformers
 torch
+datasets
 
 # Others
 python-dotenv
