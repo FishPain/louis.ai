@@ -10,7 +10,6 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain_postgres.vectorstores import PGVector
 from langchain_text_splitters.markdown import MarkdownTextSplitter
-import tiktoken
 import sqlalchemy
 import enum
 import pickle
@@ -136,6 +135,7 @@ class VectorDB:
         reranked_docs = self.reranker.rerank(query, docs, top_k=top_k)
         return reranked_docs
 
+
 class ExtractDocs:
     def __init__(self):
         self.documents = None
@@ -199,11 +199,29 @@ class ExtractDocs:
 
 
 if __name__ == "__main__":
-    # Load the documents
-    docs = ExtractDocs().extract_document(
-        "data/Constitution_of_the_Republic_of_Singapore.pdf"
-    )
-    # Save the documents
+    from datasets import load_dataset
+    import uuid
+
+    corpus = load_dataset("isaacus/open-australian-legal-qa", split="train")
     db = VectorDB()
-    db.add_documents(docs)
+    extract = ExtractDocs()
+
+    text_corpus = [
+        f'{source["citation"]} -> {source["text"]}' for source in corpus["source"]
+    ]
+    metadata = [
+        {
+            "id": str(uuid.uuid4()),
+            "version_id": source["version_id"],
+            "type": source["type"],
+            "jurisdiction": source["jurisdiction"],
+            "source": source["source"],
+            "citation": source["citation"],
+            "url": source["url"],
+        }
+        for source in corpus["source"]
+    ]
+
+    embedded_corpus = extract.extract_text(text_corpus, metadata)
+    db.add_documents(embedded_corpus)
     db.enable_hnsw_indexing()
